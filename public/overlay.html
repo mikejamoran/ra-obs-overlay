@@ -275,6 +275,7 @@ html, body {
   padding: 8px;
   gap: 6px;
   resize: none;
+  cursor: pointer;
 }
 #ach-container.mode-tiles .tile-content { width: 100%; }
 #ach-container.mode-tiles .tile-header { justify-content: center; }
@@ -283,6 +284,47 @@ html, body {
 #ach-container.mode-tiles .tile-date,
 #ach-container.mode-tiles .progress-wrap { display: none; }
 #ach-container.mode-tiles .tile-points { display: none; }
+
+/* Expanded tile in tiles mode — row layout showing full detail */
+#ach-container.mode-tiles .tile.expanded {
+  flex-direction: row;
+  align-items: flex-start;
+  text-align: left;
+  width: 100%;
+  padding: 10px 12px;
+  gap: 10px;
+  resize: both;
+  cursor: grab;
+}
+#ach-container.mode-tiles .tile.expanded .tile-badge {
+  width: var(--badge-size);
+  height: var(--badge-size);
+  flex-shrink: 0;
+}
+#ach-container.mode-tiles .tile.expanded .tile-content { flex: 1; width: auto; }
+#ach-container.mode-tiles .tile.expanded .tile-header { justify-content: space-between; }
+#ach-container.mode-tiles .tile.expanded .tile-name {
+  font-size: var(--font-size);
+  font-weight: 700;
+  line-height: 1.3;
+}
+#ach-container.mode-tiles .tile.expanded .tile-desc,
+#ach-container.mode-tiles .tile.expanded .tile-date,
+#ach-container.mode-tiles .tile.expanded .progress-wrap { display: block; }
+#ach-container.mode-tiles .tile.expanded .tile-points { display: inline-flex; }
+
+/* Expand hint chevron */
+.expand-hint {
+  position: absolute;
+  bottom: 3px; right: 4px;
+  font-size: 8px;
+  color: rgba(255,255,255,0.25);
+  line-height: 1;
+  pointer-events: none;
+  transition: color 0.15s;
+}
+#ach-container.mode-tiles .tile:hover .expand-hint { color: rgba(255,255,255,0.5); }
+.tile.expanded .expand-hint { transform: rotate(180deg); }
 
 /* ── TILE: "text" mode ──────────────────────────────────────────────────────── */
 #ach-container.mode-text .tile-badge { display: none; }
@@ -338,6 +380,8 @@ let sortable       = null;
 let lastDisplay    = {};
 let lastAchIds     = '';
 let tileObservers  = [];
+let expandedTiles  = new Set();
+let isDragging     = false;
 
 // ── Tile size observer ────────────────────────────────────────────────────────
 
@@ -444,6 +488,7 @@ function render(state) {
   tileObservers.forEach(o => o.disconnect());
   tileObservers = [];
 
+  if (mode !== 'tiles') expandedTiles.clear();
   container.className = `mode-${mode}`;
   container.innerHTML = '';
 
@@ -466,13 +511,24 @@ function render(state) {
     });
   }
 
+  // Restore expanded state after DOM rebuild
+  if (mode === 'tiles') {
+    container.querySelectorAll('.tile').forEach(tile => {
+      if (expandedTiles.has(parseInt(tile.dataset.id))) {
+        tile.classList.add('expanded');
+      }
+    });
+  }
+
   // Reinit Sortable
   sortable = new Sortable(container, {
     animation:    150,
     ghostClass:   'sortable-ghost',
     chosenClass:  'sortable-chosen',
     filter:       '.section-label',
+    onStart() { isDragging = true; },
     onEnd(evt) {
+      setTimeout(() => { isDragging = false; }, 0);
       // Rebuild order from DOM
       const ids = [...container.querySelectorAll('.tile')].map(el => parseInt(el.dataset.id));
       sendOrder(ids);
@@ -556,6 +612,25 @@ function buildTile(ach, display) {
   }
 
   tile.appendChild(content);
+
+  // In tiles mode: expand/collapse on click (chevron hints at interactivity)
+  const hint = document.createElement('div');
+  hint.className = 'expand-hint';
+  hint.textContent = '▼';
+  tile.appendChild(hint);
+
+  tile.addEventListener('click', () => {
+    if (isDragging) return;
+    const container = tile.closest('#ach-container');
+    if (!container || !container.classList.contains('mode-tiles')) return;
+    const id = parseInt(tile.dataset.id);
+    if (tile.classList.toggle('expanded')) {
+      expandedTiles.add(id);
+    } else {
+      expandedTiles.delete(id);
+    }
+  });
+
   return tile;
 }
 
