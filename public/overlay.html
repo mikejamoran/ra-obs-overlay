@@ -313,6 +313,26 @@ html, body {
 #ach-container.mode-tiles .tile.expanded .progress-wrap { display: block; }
 #ach-container.mode-tiles .tile.expanded .tile-points { display: inline-flex; }
 
+/* Dismiss (×) button */
+.dismiss-btn {
+  position: absolute;
+  top: 3px; right: 3px;
+  width: 15px; height: 15px;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; line-height: 1;
+  color: rgba(255,255,255,0.35);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+  z-index: 5;
+  user-select: none;
+}
+.tile:hover .dismiss-btn { opacity: 1; }
+.dismiss-btn:hover { background: rgba(200,50,50,0.6); color: #fff; border-color: rgba(200,50,50,0.5); }
+
 /* Expand hint chevron */
 .expand-hint {
   position: absolute;
@@ -381,6 +401,7 @@ let lastDisplay    = {};
 let lastAchIds     = '';
 let tileObservers  = [];
 let expandedTiles  = new Set();
+let dismissedTiles = new Set();
 let isDragging     = false;
 
 // ── Tile size observer ────────────────────────────────────────────────────────
@@ -461,6 +482,7 @@ function render(state) {
 
   // Filter
   let visible = achievements.filter(a => {
+    if (dismissedTiles.has(a.id)) return false;
     if (filter === 'unearned')    return !a.earned;
     if (filter === 'inprogress')  return !a.earned && a.maxProgress > 0 && a.userProgress > 0;
     return true;
@@ -525,7 +547,7 @@ function render(state) {
     animation:    150,
     ghostClass:   'sortable-ghost',
     chosenClass:  'sortable-chosen',
-    filter:       '.section-label',
+    filter:       '.section-label, .dismiss-btn',
     onStart() { isDragging = true; },
     onEnd(evt) {
       setTimeout(() => { isDragging = false; }, 0);
@@ -612,6 +634,20 @@ function buildTile(ach, display) {
   }
 
   tile.appendChild(content);
+
+  // Dismiss button (×) — removes tile from overlay for this session
+  const dismissBtn = document.createElement('div');
+  dismissBtn.className   = 'dismiss-btn';
+  dismissBtn.textContent = '×';
+  dismissBtn.title       = 'Hide from overlay';
+  dismissBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    const id = parseInt(tile.dataset.id);
+    dismissedTiles.add(id);
+    expandedTiles.delete(id);
+    tile.remove();
+  });
+  tile.appendChild(dismissBtn);
 
   // In tiles mode: expand/collapse on click (chevron hints at interactivity)
   const hint = document.createElement('div');
