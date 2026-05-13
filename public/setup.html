@@ -482,7 +482,7 @@ input[type=color] {
       <hr class="divider">
       <div class="field">
         <label>Panel Position (on overlay page)</label>
-        <div class="pos-grid">
+        <div class="pos-grid" id="mainPosGrid">
           <div class="pos-btn" data-pos="top-left"     onclick="setPos(this)">↖ Top Left</div>
           <div class="pos-btn" data-pos="top-center"   onclick="setPos(this)">↑ Top</div>
           <div class="pos-btn" data-pos="top-right"    onclick="setPos(this)">↗ Top Right</div>
@@ -514,6 +514,45 @@ input[type=color] {
       <div class="ach-list" id="achList">
         <div style="color:var(--muted);font-size:13px;padding:12px 0">
           Select a game above to see achievements here.
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- Recent Achievements Panel -->
+  <div class="card">
+    <div class="card-header"><h2>6 · Recent Achievements Panel</h2></div>
+    <div class="card-body">
+      <div class="field">
+        <label class="check-opt" id="recentEnabledOpt" style="width:fit-content">
+          <input type="checkbox" id="recentEnabled" onchange="toggleRecent(this.checked)">
+          Show a separate "Recently Earned" panel on the overlay
+        </label>
+        <div style="font-size:12px;color:var(--muted);margin-top:6px">
+          Displays your most recently earned achievements in a second, independently positioned panel.
+          Uses the same display mode and visual style as the main panel.
+        </div>
+      </div>
+      <hr class="divider">
+      <div class="field">
+        <label>Achievements to show: <span id="recentCountVal">3</span></label>
+        <input type="range" min="1" max="5" value="3" id="recentCount"
+               oninput="setDisplay('recentCount',+this.value); document.getElementById('recentCountVal').textContent=this.value">
+      </div>
+      <hr class="divider">
+      <div class="field">
+        <label>Recent Panel Position</label>
+        <div class="pos-grid" id="recentPosGrid">
+          <div class="pos-btn" data-pos="top-left"      onclick="setRecentPos(this)">↖ Top Left</div>
+          <div class="pos-btn" data-pos="top-center"    onclick="setRecentPos(this)">↑ Top</div>
+          <div class="pos-btn" data-pos="top-right"     onclick="setRecentPos(this)">↗ Top Right</div>
+          <div class="pos-btn" data-pos="center-left"   onclick="setRecentPos(this)">← Left</div>
+          <div class="pos-btn" data-pos="center"        onclick="setRecentPos(this)">· Center</div>
+          <div class="pos-btn" data-pos="center-right"  onclick="setRecentPos(this)">→ Right</div>
+          <div class="pos-btn" data-pos="bottom-left"   onclick="setRecentPos(this)">↙ Bot Left</div>
+          <div class="pos-btn" data-pos="bottom-center" onclick="setRecentPos(this)">↓ Bottom</div>
+          <div class="pos-btn" data-pos="bottom-right"  onclick="setRecentPos(this)">↘ Bot Right</div>
         </div>
       </div>
     </div>
@@ -743,8 +782,21 @@ function applyDisplayToUI(d) {
     document.getElementById('overrideOpt').classList.toggle('active', d.overrideNow);
   }
   if (d.panelPos) {
-    document.querySelectorAll('.pos-btn').forEach(b => {
+    document.querySelectorAll('#mainPosGrid .pos-btn').forEach(b => {
       b.classList.toggle('active', b.dataset.pos === d.panelPos);
+    });
+  }
+  if (d.recentEnabled !== undefined) {
+    document.getElementById('recentEnabled').checked = d.recentEnabled;
+    document.getElementById('recentEnabledOpt').classList.toggle('active', d.recentEnabled);
+  }
+  if (d.recentCount !== undefined) {
+    document.getElementById('recentCount').value = d.recentCount;
+    document.getElementById('recentCountVal').textContent = d.recentCount;
+  }
+  if (d.recentPos) {
+    document.querySelectorAll('#recentPosGrid .pos-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.pos === d.recentPos);
     });
   }
 }
@@ -777,12 +829,23 @@ document.querySelectorAll('.radio-opt input[name=filter]').forEach(inp => {
   el.addEventListener('click', () => el.classList.toggle('active', el.querySelector('input').checked));
 });
 
-// Position grid
+// Main panel position grid
 function setPos(btn) {
-  const pos = btn.dataset.pos;
-  document.querySelectorAll('.pos-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#mainPosGrid .pos-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  setDisplay('panelPos', pos);
+  setDisplay('panelPos', btn.dataset.pos);
+}
+
+// Recent panel
+async function toggleRecent(enabled) {
+  document.getElementById('recentEnabledOpt').classList.toggle('active', enabled);
+  await setDisplay('recentEnabled', enabled);
+}
+
+function setRecentPos(btn) {
+  document.querySelectorAll('#recentPosGrid .pos-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  setDisplay('recentPos', btn.dataset.pos);
 }
 
 // ── Misc ──────────────────────────────────────────────────────────────────────

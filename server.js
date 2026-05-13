@@ -42,6 +42,9 @@ let S = {
     pinned:      [],           // achievement IDs that float to top
     order:       [],           // full achievement ID order
     overrideNow: false,
+    recentEnabled: false,
+    recentCount:   3,
+    recentPos:     'bottom-left',
   },
   lastAchRefresh:  0,
   lastGameCheck:   0,

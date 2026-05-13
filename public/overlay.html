@@ -360,6 +360,109 @@ html, body {
   flex-shrink: 0;
 }
 
+/* ── Recent panel ───────────────────────────────────────────────────────────── */
+#recent-panel {
+  position: fixed;
+  width: var(--panel-width);
+  max-height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+  transition: all 0.4s ease;
+}
+
+#recent-panel.top-left     { top: 16px; left: 16px; }
+#recent-panel.top-center   { top: 16px; left: 50%; transform: translateX(-50%); }
+#recent-panel.top-right    { top: 16px; right: 16px; }
+#recent-panel.center-left  { top: 50%; left: 16px; transform: translateY(-50%); }
+#recent-panel.center       { top: 50%; left: 50%; transform: translate(-50%,-50%); }
+#recent-panel.center-right { top: 50%; right: 16px; transform: translateY(-50%); }
+#recent-panel.bottom-left  { bottom: 16px; left: 16px; }
+#recent-panel.bottom-center{ bottom: 16px; left: 50%; transform: translateX(-50%); }
+#recent-panel.bottom-right { bottom: 16px; right: 16px; }
+
+#recent-header {
+  background: rgba(0,0,0,0.6);
+  border-radius: var(--tile-radius) var(--tile-radius) 0 0;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-bottom: none;
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+#recent-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--gold-color);
+}
+#recent-count-label {
+  font-size: 10px;
+  color: var(--muted-color);
+}
+
+#recent-container {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.15) transparent;
+  display: flex;
+  flex-direction: column;
+  gap: var(--tile-gap);
+  padding: 4px 0;
+}
+#recent-container::-webkit-scrollbar { width: 4px; }
+#recent-container::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
+
+/* Mirror tiles-mode layout for recent container */
+#recent-container.mode-tiles {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-content: flex-start;
+}
+#recent-container.mode-tiles .tile {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  width: calc(var(--badge-size) + 24px);
+  padding: 8px;
+  gap: 6px;
+  resize: none;
+  cursor: pointer;
+}
+#recent-container.mode-tiles .tile-content { width: 100%; }
+#recent-container.mode-tiles .tile-header { justify-content: center; }
+#recent-container.mode-tiles .tile-name { font-size: 10px; font-weight: 600; }
+#recent-container.mode-tiles .tile-desc,
+#recent-container.mode-tiles .tile-date,
+#recent-container.mode-tiles .progress-wrap { display: none; }
+#recent-container.mode-tiles .tile-points { display: none; }
+#recent-container.mode-tiles .tile.expanded {
+  flex-direction: row;
+  align-items: flex-start;
+  text-align: left;
+  width: 100%;
+  padding: 10px 12px;
+  gap: 10px;
+  resize: both;
+  cursor: grab;
+}
+#recent-container.mode-tiles .tile.expanded .tile-badge { width: var(--badge-size); height: var(--badge-size); flex-shrink: 0; }
+#recent-container.mode-tiles .tile.expanded .tile-content { flex: 1; width: auto; }
+#recent-container.mode-tiles .tile.expanded .tile-header { justify-content: space-between; }
+#recent-container.mode-tiles .tile.expanded .tile-name { font-size: var(--font-size); font-weight: 700; line-height: 1.3; }
+#recent-container.mode-tiles .tile.expanded .tile-desc,
+#recent-container.mode-tiles .tile.expanded .tile-date,
+#recent-container.mode-tiles .tile.expanded .progress-wrap { display: block; }
+#recent-container.mode-tiles .tile.expanded .tile-points { display: inline-flex; }
+#recent-container.mode-tiles .tile:hover .expand-hint { color: rgba(255,255,255,0.5); }
+
+#recent-container.mode-text .tile-badge { display: none; }
+#recent-container.mode-text .tile { padding: 7px 12px; }
+
 /* ── Update ticker ──────────────────────────────────────────────────────────── */
 #ticker {
   position: fixed;
@@ -386,6 +489,14 @@ html, body {
   </div>
 </div>
 
+<div id="recent-panel" style="display:none">
+  <div id="recent-header">
+    <div id="recent-label">★ Recently Earned</div>
+    <div id="recent-count-label"></div>
+  </div>
+  <div id="recent-container"></div>
+</div>
+
 <div id="ticker">⟳ —</div>
 
 <!-- SortableJS for drag-to-reorder -->
@@ -400,9 +511,11 @@ let sortable       = null;
 let lastDisplay    = {};
 let lastAchIds     = '';
 let tileObservers  = [];
-let expandedTiles  = new Set();
-let dismissedTiles = new Set();
-let isDragging     = false;
+let expandedTiles   = new Set();
+let dismissedTiles  = new Set();
+let isDragging      = false;
+let lastRecentIds   = '';
+let recentObservers = [];
 
 // ── Tile size observer ────────────────────────────────────────────────────────
 
@@ -472,6 +585,7 @@ function render(state) {
   if (!achievements || !achievements.length) {
     document.getElementById('ach-container').innerHTML =
       '<div class="state-msg">No achievements to display.<br>Configure in the setup page.</div>';
+    renderRecent(state);
     return;
   }
 
@@ -556,6 +670,65 @@ function render(state) {
       sendOrder(ids);
     },
   });
+
+  renderRecent(state);
+}
+
+// ── Recent panel ──────────────────────────────────────────────────────────────
+
+function renderRecent(state) {
+  const { achievements, display } = state;
+  const panel = document.getElementById('recent-panel');
+
+  if (!display.recentEnabled) {
+    panel.style.display = 'none';
+    return;
+  }
+
+  panel.style.display = 'flex';
+  panel.className = display.recentPos || 'bottom-left';
+
+  const mode  = display.mode  || 'both';
+  const count = display.recentCount || 3;
+
+  // Earned only, sorted by date descending, excluding dismissed tiles
+  const recent = (achievements || [])
+    .filter(a => a.earned && a.dateEarned && !dismissedTiles.has(a.id))
+    .sort((a, b) => {
+      const da = new Date(a.dateEarned.replace(' ', 'T') + 'Z');
+      const db = new Date(b.dateEarned.replace(' ', 'T') + 'Z');
+      return db - da;
+    })
+    .slice(0, count);
+
+  const cacheKey = recent.map(a => a.id).join(',') + '|' + mode + '|' + count;
+  if (cacheKey === lastRecentIds) return;
+  lastRecentIds = cacheKey;
+
+  const container = document.getElementById('recent-container');
+  const countEl   = document.getElementById('recent-count-label');
+  countEl.textContent = recent.length ? `${recent.length} recent` : '';
+
+  recentObservers.forEach(o => o.disconnect());
+  recentObservers = [];
+
+  container.className = `mode-${mode}`;
+  container.innerHTML = '';
+
+  if (!recent.length) {
+    container.innerHTML = '<div class="state-msg">No earned achievements yet.</div>';
+    return;
+  }
+
+  for (const ach of recent) {
+    container.appendChild(buildTile(ach, display));
+  }
+
+  if (mode !== 'tiles') {
+    container.querySelectorAll('.tile').forEach(tile => {
+      recentObservers.push(attachTileObserver(tile));
+    });
+  }
 }
 
 function buildTile(ach, display) {
