@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RA Achievement Overlay — Setup</title>
+<style>
+:root {
+  --bg:      #0d1117;
+  --surface: #161b22;
+  --panel:   #21262d;
+  --border:  #30363d;
+  --accent:  #1f6feb;
+  --accent2: #388bfd;
+  --text:    #e6edf3;
+  --muted:   #8b949e;
+  --success: #3fb950;
+  --warn:    #d29922;
+  --error:   #f85149;
+  --gold:    #e3b341;
+  --r:       8px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Layout */
+.layout { display: flex; min-height: 100vh; }
+.sidebar {
+  width: 300px; min-width: 280px;
+  background: #0a0e14;
+  border-right: 1px solid var(--border);
+  position: sticky; top: 0; height: 100vh;
+  overflow-y: auto;
+  display: flex; flex-direction: column;
+  padding: 20px 0;
+}
+.main { flex: 1; padding: 24px; max-width: 860px; }
+
+/* Sidebar */
+.sb-title { padding: 0 20px 16px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+.sb-title h1 { font-size: 16px; font-weight: 700; letter-spacing: 0.02em; }
+.sb-title .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+.status-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 20px;
+  font-size: 13px;
+}
+.dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  background: var(--muted);
+}
+.dot.ok  { background: var(--success); box-shadow: 0 0 6px var(--success); }
+.dot.err { background: var(--error); }
+.dot.warn{ background: var(--warn); }
+
+.sb-section { padding: 12px 20px; }
+.sb-section label { display: block; color: var(--muted); font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.08em; margin-bottom: 6px; }
+
+.obs-url-box {
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--r);
+  padding: 8px 10px; font-family: monospace; font-size: 12px;
+  color: var(--accent); word-break: break-all;
+  cursor: pointer; user-select: all;
+  position: relative;
+}
+.obs-url-box:hover { border-color: var(--accent); }
+
+.btn-copy {
+  display: block; width: 100%; margin-top: 6px;
+  padding: 7px; border-radius: 6px;
+  background: var(--panel); border: 1px solid var(--border);
+  color: var(--text); font-size: 12px; cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-copy:hover { background: var(--accent); border-color: var(--accent); }
+
+.now-playing {
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--r);
+  padding: 8px 10px; font-size: 12px; color: var(--muted);
+}
+.now-playing strong { color: var(--text); display: block; }
+
+.sb-bottom { margin-top: auto; padding: 16px 20px; border-top: 1px solid var(--border); }
+.refresh-info { font-size: 11px; color: var(--muted); }
+
+/* Cards */
+.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+  margin-bottom: 16px; overflow: hidden;
+}
+.card-header {
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.card-header h2 { font-size: 14px; font-weight: 600; }
+.card-body { padding: 16px; }
+
+/* Form elements */
+.field { margin-bottom: 12px; }
+.field:last-child { margin-bottom: 0; }
+.field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.field input[type=text],
+.field input[type=password],
+.field select,
+.field textarea {
+  width: 100%; padding: 7px 10px; border-radius: 6px;
+  background: var(--panel); border: 1px solid var(--border);
+  color: var(--text); font-size: 13px; font-family: inherit;
+  outline: none; transition: border-color 0.15s;
+}
+.field input:focus, .field select:focus { border-color: var(--accent); }
+.field select option { background: var(--panel); }
+
+.field-row { display: flex; gap: 8px; align-items: flex-end; }
+.field-row .field { flex: 1; margin-bottom: 0; }
+
+input[type=range] {
+  width: 100%; accent-color: var(--accent); cursor: pointer;
+}
+input[type=color] {
+  width: 40px; height: 28px; padding: 2px; border-radius: 4px;
+  border: 1px solid var(--border); background: var(--panel); cursor: pointer;
+}
+.range-row {
+  display: flex; align-items: center; gap: 10px;
+}
+.range-row input[type=range] { flex: 1; }
+.range-val { color: var(--muted); font-size: 12px; min-width: 36px; text-align: right; }
+
+/* Buttons */
+.btn {
+  padding: 7px 14px; border-radius: 6px; border: 1px solid var(--border);
+  font-size: 13px; font-family: inherit; cursor: pointer;
+  background: var(--panel); color: var(--text);
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn:hover { background: #2d333b; }
+.btn-primary { background: var(--accent); border-color: var(--accent); font-weight: 600; }
+.btn-primary:hover { background: var(--accent2); border-color: var(--accent2); }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+.btn-danger { background: rgba(248,81,73,0.12); border-color: var(--error); color: var(--error); }
+
+/* Radio / checkbox groups */
+.radio-group, .check-group { display: flex; gap: 12px; flex-wrap: wrap; }
+.radio-opt, .check-opt {
+  display: flex; align-items: center; gap: 6px;
+  cursor: pointer; font-size: 13px; padding: 6px 10px;
+  border-radius: 6px; border: 1px solid var(--border);
+  background: var(--panel); user-select: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+.radio-opt:hover, .check-opt:hover { border-color: var(--accent); }
+.radio-opt input, .check-opt input { accent-color: var(--accent); }
+.radio-opt.active { border-color: var(--accent); background: rgba(31,111,235,0.12); }
+.check-opt.active { border-color: var(--accent); background: rgba(31,111,235,0.12); }
+
+/* Panel position picker */
+.pos-grid {
+  display: grid; grid-template-columns: repeat(3, 64px); gap: 4px;
+  margin-top: 4px;
+}
+.pos-btn {
+  padding: 8px 4px; text-align: center; font-size: 11px;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 6px; cursor: pointer; color: var(--muted);
+  transition: border-color 0.15s, background 0.15s;
+}
+.pos-btn:hover { border-color: var(--accent); color: var(--text); }
+.pos-btn.active { border-color: var(--accent); background: rgba(31,111,235,0.16); color: var(--text); }
+
+/* Achievement highlight list */
+.ach-filter { display: flex; gap: 8px; margin-bottom: 10px; }
+.ach-filter input {
+  flex: 1; padding: 6px 10px; border-radius: 6px;
+  background: var(--panel); border: 1px solid var(--border);
+  color: var(--text); font-size: 13px; outline: none;
+}
+.ach-filter input:focus { border-color: var(--accent); }
+
+.ach-list { max-height: 420px; overflow-y: auto; }
+.ach-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: var(--r);
+  border: 1px solid transparent;
+  transition: background 0.1s, border-color 0.1s;
+  cursor: default;
+}
+.ach-item:hover { background: var(--panel); }
+.ach-item.earned { opacity: 0.55; }
+.ach-item.pinned {
+  border-color: var(--gold);
+  background: rgba(227,179,65,0.08);
+}
+.ach-badge { width: 40px; height: 40px; border-radius: 4px; object-fit: cover; flex-shrink: 0; }
+.ach-info { flex: 1; min-width: 0; }
+.ach-title {
+  font-size: 13px; font-weight: 600; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.ach-desc { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ach-meta { font-size: 11px; color: var(--muted); margin-top: 1px; }
+.pin-btn {
+  background: none; border: none; cursor: pointer; font-size: 16px;
+  color: var(--muted); padding: 4px; border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+.pin-btn:hover { color: var(--gold); background: rgba(227,179,65,0.12); }
+.pin-btn.active { color: var(--gold); }
+.ach-type-badge {
+  font-size: 10px; padding: 1px 5px; border-radius: 3px;
+  background: var(--panel); border: 1px solid var(--border);
+  color: var(--muted); flex-shrink: 0;
+}
+
+/* Tags */
+.tag {
+  display: inline-block; font-size: 11px; padding: 2px 7px;
+  border-radius: 12px; border: 1px solid var(--border);
+  background: var(--panel); color: var(--muted);
+}
+.tag.green { border-color: var(--success); color: var(--success); background: rgba(63,185,80,0.1); }
+.tag.gold  { border-color: var(--gold); color: var(--gold); background: rgba(227,179,65,0.1); }
+
+/* Error / info banners */
+.banner {
+  padding: 8px 12px; border-radius: 6px; font-size: 13px; margin-bottom: 12px;
+}
+.banner.error   { background: rgba(248,81,73,0.12); border: 1px solid var(--error); color: var(--error); }
+.banner.success { background: rgba(63,185,80,0.12); border: 1px solid var(--success); color: var(--success); }
+.banner.info    { background: rgba(31,111,235,0.12); border: 1px solid var(--accent); color: var(--accent2); }
+.hidden { display: none; }
+
+/* Divider */
+.divider { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+@media (max-width: 700px) {
+  .layout { flex-direction: column; }
+  .sidebar { width: 100%; height: auto; position: static; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<!-- ── Sidebar ──────────────────────────────────────────────────────────── -->
+<aside class="sidebar">
+  <div class="sb-title">
+    <h1>RA Achievement Overlay</h1>
+    <div class="sub">OBS Browser Source</div>
+  </div>
+
+  <div class="status-row">
+    <div class="dot" id="connDot"></div>
+    <span id="connLabel">Not connected</span>
+  </div>
+
+  <div class="sb-section">
+    <label>Now Playing</label>
+    <div class="now-playing" id="nowPlaying">—</div>
+  </div>
+
+  <div class="sb-section">
+    <label>OBS Browser Source URL</label>
+    <div class="obs-url-box" id="obsUrl" title="Click to copy">
+      http://localhost:7890/obs
+    </div>
+    <button class="btn-copy" onclick="copyOBSUrl()">⎘ Copy URL</button>
+    <button class="btn-copy" style="margin-top:4px"
+            onclick="window.open('http://localhost:7890/obs','_blank')">
+      ↗ Open Preview in Browser
+    </button>
+  </div>
+
+  <div class="sb-section">
+    <label>OBS Setup Tips</label>
+    <div style="font-size:12px;color:var(--muted);line-height:1.6">
+      1. In OBS → Sources → Add → Browser Source<br>
+      2. Paste the URL above<br>
+      3. Set width/height to your canvas (e.g. 1920×1080)<br>
+      4. Check <strong style="color:var(--text)">Allow Transparency</strong>
+    </div>
+  </div>
+
+  <div class="sb-bottom">
+    <div class="refresh-info" id="refreshInfo">Achievements refresh every 2 min</div>
+    <button class="btn btn-sm" style="margin-top:8px;width:100%" onclick="forceRefresh()">
+      ↺ Force Refresh Now
+    </button>
+  </div>
+</aside>
+
+<!-- ── Main ──────────────────────────────────────────────────────────────── -->
+<main class="main">
+
+  <!-- Credentials -->
+  <div class="card">
+    <div class="card-header">
+      <h2>1 · RetroAchievements Credentials</h2>
+      <span class="tag" id="credsTag">Required</span>
+    </div>
+    <div class="card-body">
+      <div id="credsError" class="banner error hidden"></div>
+      <div class="field-row">
+        <div class="field">
+          <label>Username</label>
+          <input type="text" id="username" placeholder="your-ra-username" autocomplete="username">
+        </div>
+        <div class="field">
+          <label>API Key
+            <a href="https://retroachievements.org/settings" target="_blank" style="font-size:11px;margin-left:6px">↗ Get yours</a>
+          </label>
+          <input type="password" id="apiKey" placeholder="••••••••••••••••" autocomplete="current-password">
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;margin-top:10px">
+        <label class="check-opt" id="saveCreds">
+          <input type="checkbox" id="saveCredsChk" checked> Save credentials
+        </label>
+        <button class="btn btn-primary" onclick="connect()">Connect →</button>
+        <span id="connectingMsg" class="hidden" style="color:var(--muted);font-size:13px">Connecting…</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game Selection -->
+  <div class="card" id="gameCard">
+    <div class="card-header">
+      <h2>2 · Game Selection</h2>
+      <span class="tag" id="gameTag">No game selected</span>
+    </div>
+    <div class="card-body">
+      <div class="field">
+        <label>Recently Played Games</label>
+        <select id="gameSelect">
+          <option value="">— Connect first —</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;margin-top:10px">
+        <button class="btn btn-primary" onclick="selectGame()">Load Achievements →</button>
+        <label class="check-opt" id="overrideOpt">
+          <input type="checkbox" id="overrideNow" onchange="toggleOverride()">
+          Auto-switch to currently playing game
+        </label>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:8px">
+        When checked, the overlay switches automatically when you start a new game on RetroAchievements.
+      </div>
+    </div>
+  </div>
+
+  <!-- What to Show -->
+  <div class="card">
+    <div class="card-header"><h2>3 · What to Show</h2></div>
+    <div class="card-body">
+      <div class="field">
+        <label>Display Mode</label>
+        <div class="radio-group" id="modeGroup">
+          <label class="radio-opt" data-val="tiles">
+            <input type="radio" name="mode" value="tiles"> 🎖 Tiles (badge grid)
+          </label>
+          <label class="radio-opt" data-val="text">
+            <input type="radio" name="mode" value="text"> 📋 Text list
+          </label>
+          <label class="radio-opt" data-val="both">
+            <input type="radio" name="mode" value="both"> ✨ Tiles + Text
+          </label>
+        </div>
+      </div>
+      <hr class="divider">
+      <div class="field">
+        <label>Achievement Filter</label>
+        <div class="radio-group" id="filterGroup">
+          <label class="radio-opt" data-val="all">
+            <input type="radio" name="filter" value="all"> All achievements
+          </label>
+          <label class="radio-opt" data-val="unearned">
+            <input type="radio" name="filter" value="unearned"> Unearned only
+          </label>
+          <label class="radio-opt" data-val="inprogress">
+            <input type="radio" name="filter" value="inprogress"> In-progress only
+          </label>
+        </div>
+      </div>
+      <hr class="divider">
+      <div class="field">
+        <label>Show Details</label>
+        <div class="check-group">
+          <label class="check-opt" id="showPtsOpt">
+            <input type="checkbox" id="showPoints" onchange="setDisplay('showPoints', this.checked)">
+            Points value
+          </label>
+          <label class="check-opt" id="showDescOpt">
+            <input type="checkbox" id="showDesc" onchange="setDisplay('showDesc', this.checked)">
+            Description
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Visual Style -->
+  <div class="card">
+    <div class="card-header"><h2>4 · Visual Style</h2></div>
+    <div class="card-body">
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div>
+          <div class="field">
+            <label>Background Color</label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="color" id="bgColor" value="#0d0d0d" oninput="setDisplay('bgColor',this.value)">
+              <div class="range-row" style="flex:1">
+                <input type="range" id="bgOpacity" min="0" max="100" value="88"
+                       oninput="setDisplay('bgOpacity', this.value/100); document.getElementById('bgOpacityVal').textContent=this.value+'%'">
+                <span class="range-val" id="bgOpacityVal">88%</span>
+              </div>
+            </div>
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">Color + Opacity slider</div>
+          </div>
+          <div class="field">
+            <label>Text Color</label>
+            <input type="color" id="textColor" value="#e6edf3" oninput="setDisplay('textColor',this.value)">
+          </div>
+          <div class="field">
+            <label>Accent / Highlight Color</label>
+            <input type="color" id="accentColor" value="#1f6feb" oninput="setDisplay('accentColor',this.value)">
+          </div>
+        </div>
+        <div>
+          <div class="field">
+            <label>Font Size: <span id="fontSizeVal">13px</span></label>
+            <input type="range" min="10" max="24" value="13" id="fontSize"
+                   oninput="setDisplay('fontSize',+this.value); document.getElementById('fontSizeVal').textContent=this.value+'px'">
+          </div>
+          <div class="field">
+            <label>Badge Size: <span id="badgeSizeVal">56px</span></label>
+            <input type="range" min="28" max="96" value="56" id="badgeSize"
+                   oninput="setDisplay('badgeSize',+this.value); document.getElementById('badgeSizeVal').textContent=this.value+'px'">
+          </div>
+          <div class="field">
+            <label>Tile Gap: <span id="tileGapVal">8px</span></label>
+            <input type="range" min="2" max="24" value="8" id="tileGap"
+                   oninput="setDisplay('tileGap',+this.value); document.getElementById('tileGapVal').textContent=this.value+'px'">
+          </div>
+          <div class="field">
+            <label>Panel Width: <span id="panelWidthVal">440px</span></label>
+            <input type="range" min="280" max="800" value="440" id="panelWidth"
+                   oninput="setDisplay('panelWidth',+this.value); document.getElementById('panelWidthVal').textContent=this.value+'px'">
+          </div>
+        </div>
+      </div>
+
+      <hr class="divider">
+      <div class="field">
+        <label>Font Family</label>
+        <select id="fontFamily" onchange="setDisplay('fontFamily',this.value)">
+          <option value='"Segoe UI", system-ui, sans-serif'>Segoe UI (system)</option>
+          <option value='"Roboto", sans-serif'>Roboto</option>
+          <option value='"Inter", sans-serif'>Inter</option>
+          <option value='"Courier New", monospace'>Courier New (mono)</option>
+          <option value='"Georgia", serif'>Georgia (serif)</option>
+        </select>
+      </div>
+
+      <hr class="divider">
+      <div class="field">
+        <label>Panel Position (on overlay page)</label>
+        <div class="pos-grid">
+          <div class="pos-btn" data-pos="top-left"     onclick="setPos(this)">↖ Top Left</div>
+          <div class="pos-btn" data-pos="top-center"   onclick="setPos(this)">↑ Top</div>
+          <div class="pos-btn" data-pos="top-right"    onclick="setPos(this)">↗ Top Right</div>
+          <div class="pos-btn" data-pos="center-left"  onclick="setPos(this)">← Left</div>
+          <div class="pos-btn" data-pos="center"       onclick="setPos(this)">· Center</div>
+          <div class="pos-btn" data-pos="center-right" onclick="setPos(this)">→ Right</div>
+          <div class="pos-btn" data-pos="bottom-left"  onclick="setPos(this)">↙ Bot Left</div>
+          <div class="pos-btn" data-pos="bottom-center"onclick="setPos(this)">↓ Bottom</div>
+          <div class="pos-btn" data-pos="bottom-right" onclick="setPos(this)">↘ Bot Right</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Achievement Highlights -->
+  <div class="card">
+    <div class="card-header">
+      <h2>5 · Achievement Highlights &amp; Order</h2>
+      <span class="tag" id="achCountTag">—</span>
+    </div>
+    <div class="card-body">
+      <div class="banner info" style="margin-bottom:12px">
+        ★ Pinned achievements appear at the top. Drag rows in the overlay's interact mode to reorder.
+      </div>
+      <div class="ach-filter">
+        <input type="text" id="achSearch" placeholder="Search achievements…" oninput="filterAchList()">
+        <button class="btn btn-sm" onclick="clearPins()">Clear pins</button>
+      </div>
+      <div class="ach-list" id="achList">
+        <div style="color:var(--muted);font-size:13px;padding:12px 0">
+          Select a game above to see achievements here.
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+</div>
+
+<script>
+'use strict';
+
+// ── State ─────────────────────────────────────────────────────────────────────
+
+let display = {};
+let achievements = [];
+let pinnedIds = new Set();
+let gameList  = [];
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+async function init() {
+  try {
+    const cfg = await api('/api/config');
+    if (cfg.username) {
+      document.getElementById('username').value = cfg.username;
+      document.getElementById('apiKey').value   = cfg.hasApiKey ? '••••••••••••' : '';
+    }
+    if (cfg.connected) {
+      setConnected(cfg.username);
+      await loadGames(cfg.gameId);
+    }
+    applyDisplayToUI(cfg.display || {});
+    display = cfg.display || {};
+    if (cfg.nowPlayingTitle) {
+      document.getElementById('nowPlaying').innerHTML =
+        `<strong>${escHtml(cfg.nowPlayingTitle)}</strong>`;
+    }
+    if (cfg.gameId && cfg.connected) {
+      await loadAchievements();
+    }
+  } catch(e) { /* first run */ }
+}
+
+// ── Connection ────────────────────────────────────────────────────────────────
+
+async function connect() {
+  const username = document.getElementById('username').value.trim();
+  const apiKey   = document.getElementById('apiKey').value.trim();
+  if (!username || !apiKey || apiKey.startsWith('•')) {
+    showError('credsError', 'Enter your RetroAchievements username and API key.');
+    return;
+  }
+  document.getElementById('connectingMsg').classList.remove('hidden');
+  document.querySelector('#credsError').classList.add('hidden');
+  try {
+    const res = await api('/api/connect', 'POST', {
+      username, api_key: apiKey,
+      save: document.getElementById('saveCredsChk').checked,
+    });
+    if (!res.ok) { showError('credsError', res.error); return; }
+    setConnected(res.username);
+    await loadGames();
+    if (res.nowPlayingId) {
+      const game = gameList.find(g => g.GameID == res.nowPlayingId);
+      if (game) document.getElementById('nowPlaying').innerHTML =
+        `<strong>${escHtml(game.Title)}</strong>`;
+    }
+  } catch(e) { showError('credsError', e.message); }
+  finally { document.getElementById('connectingMsg').classList.add('hidden'); }
+}
+
+function setConnected(username) {
+  const dot = document.getElementById('connDot');
+  dot.className = 'dot ok';
+  document.getElementById('connLabel').textContent = `Connected as ${username}`;
+  document.getElementById('credsTag').textContent  = '✓ Connected';
+  document.getElementById('credsTag').className    = 'tag green';
+}
+
+// ── Games ─────────────────────────────────────────────────────────────────────
+
+async function loadGames(preselect) {
+  const sel = document.getElementById('gameSelect');
+  sel.innerHTML = '<option value="">— Loading… —</option>';
+  try {
+    const { games } = await api('/api/games');
+    gameList = games || [];
+    sel.innerHTML = '<option value="">— Select a game —</option>';
+    for (const g of gameList) {
+      const opt = document.createElement('option');
+      opt.value = g.GameID;
+      opt.textContent = `${g.Title} (${g.ConsoleName})`;
+      if (preselect && g.GameID == preselect) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  } catch(e) {
+    sel.innerHTML = '<option value="">Error loading games</option>';
+  }
+}
+
+async function selectGame() {
+  const sel  = document.getElementById('gameSelect');
+  const gid  = sel.value;
+  if (!gid) return;
+  const name = sel.options[sel.selectedIndex].text;
+  document.getElementById('gameTag').textContent = name;
+  document.getElementById('gameTag').className   = 'tag gold';
+  await api('/api/select-game', 'POST', {
+    game_id: gid,
+    save: document.getElementById('saveCredsChk').checked,
+  });
+  await loadAchievements();
+}
+
+async function toggleOverride() {
+  const on = document.getElementById('overrideNow').checked;
+  await setDisplay('overrideNow', on);
+  if (on) document.getElementById('overrideOpt').classList.add('active');
+  else    document.getElementById('overrideOpt').classList.remove('active');
+}
+
+// ── Achievements ──────────────────────────────────────────────────────────────
+
+async function loadAchievements() {
+  const { achievements: list, gameInfo, display: disp } = await api('/api/achievements');
+  achievements = list || [];
+  pinnedIds    = new Set((disp.pinned || []));
+  const tag = document.getElementById('achCountTag');
+  if (gameInfo && gameInfo.title) {
+    tag.textContent = `${achievements.length} achievements · ${gameInfo.earned || 0} earned`;
+    tag.className   = 'tag gold';
+  }
+  renderAchList(achievements);
+}
+
+function renderAchList(list) {
+  const container = document.getElementById('achList');
+  if (!list.length) {
+    container.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:12px 0">No achievements found.</div>';
+    return;
+  }
+  container.innerHTML = '';
+  for (const a of list) {
+    const pinned  = pinnedIds.has(a.id);
+    const badgeSrc = `https://media.retroachievements.org/Badge/${a.badge}${a.earned ? '' : '_lock'}.png`;
+    const div = document.createElement('div');
+    div.className  = `ach-item${a.earned ? ' earned' : ''}${pinned ? ' pinned' : ''}`;
+    div.dataset.id = a.id;
+    const pct = a.maxProgress > 0 ? Math.round(100 * a.userProgress / a.maxProgress) : 0;
+    const progStr = a.maxProgress > 0
+      ? `<span style="color:var(--accent);font-size:11px"> · ${a.userProgress}/${a.maxProgress} (${pct}%)</span>` : '';
+    const typeStr = a.type ? `<span class="ach-type-badge">${a.type}</span>` : '';
+    div.innerHTML = `
+      <img class="ach-badge" src="${escHtml(badgeSrc)}" alt="" loading="lazy"
+           onerror="this.style.opacity='0.3'">
+      <div class="ach-info">
+        <div class="ach-title">${escHtml(a.title)} ${a.earned ? '<span style="color:var(--success)">✓</span>' : ''}</div>
+        <div class="ach-desc">${escHtml(a.description)}</div>
+        <div class="ach-meta">${a.points} pts${progStr}</div>
+      </div>
+      ${typeStr}
+      <button class="pin-btn ${pinned ? 'active' : ''}" title="${pinned ? 'Unpin' : 'Pin to top'}"
+              onclick="togglePin(${a.id}, this)">★</button>
+    `;
+    container.appendChild(div);
+  }
+}
+
+function filterAchList() {
+  const q = document.getElementById('achSearch').value.toLowerCase();
+  const filtered = achievements.filter(a =>
+    a.title.toLowerCase().includes(q) || a.description.toLowerCase().includes(q)
+  );
+  renderAchList(filtered);
+}
+
+async function togglePin(id, btn) {
+  if (pinnedIds.has(id)) pinnedIds.delete(id);
+  else                   pinnedIds.add(id);
+  btn.classList.toggle('active');
+  const item = btn.closest('.ach-item');
+  item.classList.toggle('pinned');
+  await setDisplay('pinned', [...pinnedIds]);
+}
+
+async function clearPins() {
+  pinnedIds.clear();
+  await setDisplay('pinned', []);
+  document.querySelectorAll('.pin-btn.active').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.ach-item.pinned').forEach(i => i.classList.remove('pinned'));
+}
+
+// ── Display settings ──────────────────────────────────────────────────────────
+
+async function setDisplay(key, value) {
+  display[key] = value;
+  await api('/api/display', 'POST', { [key]: value });
+}
+
+function applyDisplayToUI(d) {
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+  if (d.bgColor)     { set('bgColor', d.bgColor); }
+  if (d.bgOpacity !== undefined) {
+    const pct = Math.round(d.bgOpacity * 100);
+    set('bgOpacity', pct);
+    document.getElementById('bgOpacityVal').textContent = pct + '%';
+  }
+  if (d.textColor)   { set('textColor', d.textColor); }
+  if (d.accentColor) { set('accentColor', d.accentColor); }
+  if (d.fontSize)    { set('fontSize', d.fontSize); document.getElementById('fontSizeVal').textContent = d.fontSize + 'px'; }
+  if (d.badgeSize)   { set('badgeSize', d.badgeSize); document.getElementById('badgeSizeVal').textContent = d.badgeSize + 'px'; }
+  if (d.tileGap)     { set('tileGap', d.tileGap); document.getElementById('tileGapVal').textContent = d.tileGap + 'px'; }
+  if (d.panelWidth)  { set('panelWidth', d.panelWidth); document.getElementById('panelWidthVal').textContent = d.panelWidth + 'px'; }
+  if (d.fontFamily)  { set('fontFamily', d.fontFamily); }
+  if (d.mode)        { setRadioActive('modeGroup', d.mode); }
+  if (d.filter)      { setRadioActive('filterGroup', d.filter); }
+  if (d.showPoints !== undefined) {
+    document.getElementById('showPoints').checked = d.showPoints;
+    document.getElementById('showPtsOpt').classList.toggle('active', d.showPoints);
+  }
+  if (d.showDesc !== undefined) {
+    document.getElementById('showDesc').checked = d.showDesc;
+    document.getElementById('showDescOpt').classList.toggle('active', d.showDesc);
+  }
+  if (d.overrideNow !== undefined) {
+    document.getElementById('overrideNow').checked = d.overrideNow;
+    document.getElementById('overrideOpt').classList.toggle('active', d.overrideNow);
+  }
+  if (d.panelPos) {
+    document.querySelectorAll('.pos-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.pos === d.panelPos);
+    });
+  }
+}
+
+function setRadioActive(groupId, val) {
+  document.querySelectorAll(`#${groupId} .radio-opt`).forEach(el => {
+    el.classList.toggle('active', el.dataset.val === val);
+    const inp = el.querySelector('input');
+    if (inp) inp.checked = (el.dataset.val === val);
+  });
+}
+
+// Radio groups
+document.querySelectorAll('.radio-opt input[name=mode]').forEach(inp => {
+  inp.addEventListener('change', () => {
+    setDisplay('mode', inp.value);
+    setRadioActive('modeGroup', inp.value);
+  });
+});
+document.querySelectorAll('.radio-opt input[name=filter]').forEach(inp => {
+  inp.addEventListener('change', () => {
+    setDisplay('filter', inp.value);
+    setRadioActive('filterGroup', inp.value);
+  });
+});
+
+// Checkbox opts
+['showPtsOpt', 'showDescOpt'].forEach(id => {
+  const el = document.getElementById(id);
+  el.addEventListener('click', () => el.classList.toggle('active', el.querySelector('input').checked));
+});
+
+// Position grid
+function setPos(btn) {
+  const pos = btn.dataset.pos;
+  document.querySelectorAll('.pos-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  setDisplay('panelPos', pos);
+}
+
+// ── Misc ──────────────────────────────────────────────────────────────────────
+
+async function forceRefresh() {
+  try {
+    await api('/api/refresh', 'POST', {});
+    setTimeout(loadAchievements, 1500);
+  } catch(e) {}
+}
+
+function copyOBSUrl() {
+  navigator.clipboard.writeText('http://localhost:7890/obs').then(() => {
+    const btn = document.querySelector('.btn-copy');
+    btn.textContent = '✓ Copied!';
+    setTimeout(() => btn.textContent = '⎘ Copy URL', 2000);
+  });
+}
+
+function showError(id, msg) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function api(path, method='GET', body) {
+  const opts = { method, headers: {} };
+  if (body) { opts.body = JSON.stringify(body); opts.headers['Content-Type'] = 'application/json'; }
+  const res = await fetch(path, opts);
+  return res.json();
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+
+init();
+</script>
+</body>
+</html>

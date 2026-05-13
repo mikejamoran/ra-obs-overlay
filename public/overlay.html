@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>RA Overlay</title>
+<style>
+/* ── Reset ──────────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%; height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font-family: var(--font-family, "Segoe UI", system-ui, sans-serif);
+  font-size: var(--font-size, 13px);
+  color: var(--text-color, #e6edf3);
+}
+
+/* ── CSS Variables (overridden by JS) ───────────────────────────────────────── */
+:root {
+  --bg-color:     #0d0d0d;
+  --bg-opacity:   0.88;
+  --text-color:   #e6edf3;
+  --muted-color:  #8b949e;
+  --accent-color: #1f6feb;
+  --gold-color:   #e3b341;
+  --success-color:#3fb950;
+  --font-size:    13px;
+  --font-family:  "Segoe UI", system-ui, sans-serif;
+  --badge-size:   56px;
+  --tile-gap:     8px;
+  --tile-radius:  8px;
+  --panel-width:  440px;
+}
+
+/* ── Panel positioning ──────────────────────────────────────────────────────── */
+#panel {
+  position: fixed;
+  width: var(--panel-width);
+  max-height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+  transition: all 0.4s ease;
+}
+
+/* Position classes */
+#panel.top-left     { top: 16px; left: 16px; }
+#panel.top-center   { top: 16px; left: 50%; transform: translateX(-50%); }
+#panel.top-right    { top: 16px; right: 16px; }
+#panel.center-left  { top: 50%; left: 16px; transform: translateY(-50%); }
+#panel.center       { top: 50%; left: 50%; transform: translate(-50%,-50%); }
+#panel.center-right { top: 50%; right: 16px; transform: translateY(-50%); }
+#panel.bottom-left  { bottom: 16px; left: 16px; }
+#panel.bottom-center{ bottom: 16px; left: 50%; transform: translateX(-50%); }
+#panel.bottom-right { bottom: 16px; right: 16px; }
+
+/* ── Panel header ───────────────────────────────────────────────────────────── */
+#panel-header {
+  background: rgba(0,0,0,0.6);
+  border-radius: var(--tile-radius) var(--tile-radius) 0 0;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-bottom: none;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+#game-box-art {
+  width: 36px; height: 36px; border-radius: 4px; object-fit: cover;
+  flex-shrink: 0; display: none;
+}
+#game-title   { font-size: 13px; font-weight: 700; flex: 1; line-height: 1.3; }
+#game-progress{ font-size: 11px; color: var(--muted-color); }
+
+/* ── Achievements container ─────────────────────────────────────────────────── */
+#ach-container {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.15) transparent;
+  display: flex;
+  flex-direction: column;
+  gap: var(--tile-gap);
+  padding: 4px 0;
+}
+#ach-container::-webkit-scrollbar { width: 4px; }
+#ach-container::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
+
+/* ── Empty / Loading state ──────────────────────────────────────────────────── */
+.state-msg {
+  color: rgba(255,255,255,0.4);
+  font-size: 13px;
+  text-align: center;
+  padding: 24px 16px;
+}
+
+/* ── TILE: "both" mode (default, RA website style) ──────────────────────────── */
+.tile {
+  background: rgba(var(--bg-rgb, 13,13,13), var(--bg-opacity, 0.88));
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--tile-radius);
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: grab;
+  user-select: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  position: relative;
+  resize: both;
+  overflow: hidden;
+  min-width: 80px;
+  min-height: 40px;
+  flex-shrink: 0;
+}
+.tile:active { cursor: grabbing; }
+.tile:hover  { border-color: rgba(255,255,255,0.18); }
+
+/* Earned: subtle left accent */
+.tile.earned {
+  border-left: 3px solid var(--success-color);
+  opacity: 0.6;
+}
+/* Pinned: gold glow */
+.tile.pinned {
+  border-color: var(--gold-color) !important;
+  box-shadow: 0 0 12px rgba(227,179,65,0.25), inset 0 0 0 1px rgba(227,179,65,0.1);
+  opacity: 1 !important;
+}
+/* Sortable drag ghost */
+.tile.sortable-ghost { opacity: 0.3; }
+.tile.sortable-chosen { box-shadow: 0 4px 20px rgba(0,0,0,0.6); z-index: 10; }
+
+/* Badge */
+.tile-badge {
+  flex-shrink: 0;
+  position: relative;
+  width: var(--badge-size);
+  height: var(--badge-size);
+}
+.tile-badge img {
+  width: 100%; height: 100%;
+  border-radius: 6px;
+  object-fit: cover;
+  display: block;
+}
+.tile-badge img.locked { filter: grayscale(1) opacity(0.5); }
+
+/* Earned checkmark overlay on badge */
+.badge-earned {
+  position: absolute;
+  bottom: -4px; right: -4px;
+  width: 16px; height: 16px;
+  background: var(--success-color);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; color: #fff; font-weight: 700;
+  border: 1.5px solid rgba(0,0,0,0.4);
+}
+
+/* Content */
+.tile-content { flex: 1; min-width: 0; }
+
+.tile-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.tile-name {
+  font-size: var(--font-size);
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--text-color);
+  flex: 1;
+  min-width: 0;
+}
+.tile-points {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 12px;
+  padding: 2px 8px;
+  color: var(--muted-color);
+  white-space: nowrap;
+}
+.tile.pinned .tile-points { background: rgba(227,179,65,0.15); border-color: var(--gold-color); color: var(--gold-color); }
+.tile.earned .tile-points { background: rgba(63,185,80,0.12); border-color: var(--success-color); color: var(--success-color); }
+
+.tile-desc {
+  font-size: calc(var(--font-size) - 1px);
+  color: var(--muted-color);
+  line-height: 1.4;
+  margin-top: 3px;
+}
+
+/* Progress bar */
+.progress-wrap { margin-top: 6px; }
+.progress-bar {
+  height: 6px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--accent-color);
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+.tile.pinned .progress-fill { background: var(--gold-color); }
+.progress-label {
+  font-size: 10px;
+  color: var(--muted-color);
+  margin-top: 3px;
+  text-align: right;
+}
+
+.tile-date {
+  font-size: 10px;
+  color: var(--muted-color);
+  margin-top: 3px;
+}
+
+/* ── Size-adaptive tile classes (set by ResizeObserver) ─────────────────────── */
+/* sz-xs: w < 100 — badge icon only */
+.tile.sz-xs {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  padding: 4px;
+  gap: 0;
+}
+.tile.sz-xs .tile-content { display: none; }
+.tile.sz-xs .tile-badge   { flex: 1; width: 100%; height: 100%; }
+.tile.sz-xs .tile-badge img { width: 100%; height: 100%; object-fit: contain; border-radius: 4px; }
+
+/* sz-sm: w 100–159 — column RA tile: badge + name */
+.tile.sz-sm {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 8px 6px;
+  gap: 5px;
+}
+.tile.sz-sm .tile-content  { width: 100%; }
+.tile.sz-sm .tile-header   { justify-content: center; }
+.tile.sz-sm .tile-name     { font-size: 10px; font-weight: 600; line-height: 1.2; }
+.tile.sz-sm .tile-points,
+.tile.sz-sm .tile-desc,
+.tile.sz-sm .tile-date,
+.tile.sz-sm .progress-wrap { display: none; }
+
+/* sz-md: w ≥ 160, h < 72 — row: badge + name + points */
+.tile.sz-md .tile-desc,
+.tile.sz-md .tile-date,
+.tile.sz-md .progress-wrap { display: none; }
+
+/* sz-lg: w ≥ 160, h 72–109 — row: + description */
+.tile.sz-lg .tile-date,
+.tile.sz-lg .progress-wrap { display: none; }
+
+/* sz-xl: w ≥ 160, h ≥ 110 — full detail (default styles apply) */
+
+/* ── TILE: "tiles" mode ─────────────────────────────────────────────────────── */
+#ach-container.mode-tiles {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-content: flex-start;
+}
+#ach-container.mode-tiles .tile {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  width: calc(var(--badge-size) + 24px);
+  padding: 8px;
+  gap: 6px;
+  resize: none;
+}
+#ach-container.mode-tiles .tile-content { width: 100%; }
+#ach-container.mode-tiles .tile-header { justify-content: center; }
+#ach-container.mode-tiles .tile-name { font-size: 10px; font-weight: 600; }
+#ach-container.mode-tiles .tile-desc,
+#ach-container.mode-tiles .tile-date,
+#ach-container.mode-tiles .progress-wrap { display: none; }
+#ach-container.mode-tiles .tile-points { display: none; }
+
+/* ── TILE: "text" mode ──────────────────────────────────────────────────────── */
+#ach-container.mode-text .tile-badge { display: none; }
+#ach-container.mode-text .tile { padding: 7px 12px; }
+
+/* ── Pinned section header ───────────────────────────────────────────────────── */
+.section-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(227,179,65,0.7);
+  padding: 6px 4px 2px;
+  flex-shrink: 0;
+}
+
+/* ── Update ticker ──────────────────────────────────────────────────────────── */
+#ticker {
+  position: fixed;
+  bottom: 8px; right: 8px;
+  font-size: 10px;
+  color: rgba(255,255,255,0.2);
+  pointer-events: none;
+  user-select: none;
+}
+</style>
+</head>
+<body>
+
+<div id="panel" class="top-right">
+  <div id="panel-header">
+    <img id="game-box-art" src="" alt="">
+    <div>
+      <div id="game-title">RetroAchievements</div>
+      <div id="game-progress"></div>
+    </div>
+  </div>
+  <div id="ach-container">
+    <div class="state-msg">Loading…</div>
+  </div>
+</div>
+
+<div id="ticker">⟳ —</div>
+
+<!-- SortableJS for drag-to-reorder -->
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.3/Sortable.min.js"></script>
+
+<script>
+'use strict';
+
+const POLL_INTERVAL = 15_000;  // 15 s
+
+let sortable       = null;
+let lastDisplay    = {};
+let lastAchIds     = '';
+let tileObservers  = [];
+
+// ── Tile size observer ────────────────────────────────────────────────────────
+
+const W_XS = 100, W_SM = 160, H_MD = 72, H_LG = 110;
+
+function getTileSizeClass(w, h) {
+  if (w < W_XS) return 'sz-xs';
+  if (w < W_SM) return 'sz-sm';
+  if (h < H_MD) return 'sz-md';
+  if (h < H_LG) return 'sz-lg';
+  return 'sz-xl';
+}
+
+function attachTileObserver(tile) {
+  const obs = new ResizeObserver(entries => {
+    const { width, height } = entries[0].contentRect;
+    const cls = getTileSizeClass(width, height);
+    tile.classList.remove('sz-xs', 'sz-sm', 'sz-md', 'sz-lg', 'sz-xl');
+    tile.classList.add(cls);
+  });
+  obs.observe(tile);
+  return obs;
+}
+
+// ── Polling ───────────────────────────────────────────────────────────────────
+
+async function poll() {
+  try {
+    const state = await fetch('/api/state').then(r => r.json());
+    render(state);
+    const d = new Date();
+    document.getElementById('ticker').textContent =
+      `⟳ ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+  } catch(e) {
+    document.getElementById('ticker').textContent = '⟳ err';
+  }
+  setTimeout(poll, POLL_INTERVAL);
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+
+function render(state) {
+  const { gameInfo, achievements, display } = state;
+
+  applyStyles(display);
+
+  // Panel position
+  const panel = document.getElementById('panel');
+  panel.className = display.panelPos || 'top-right';
+
+  // Game header
+  const boxArt = document.getElementById('game-box-art');
+  const gtEl   = document.getElementById('game-title');
+  const gpEl   = document.getElementById('game-progress');
+  if (gameInfo && gameInfo.title) {
+    gtEl.textContent = gameInfo.title;
+    gpEl.textContent = `${gameInfo.earned || 0} / ${gameInfo.numAch || 0} achievements`;
+    if (gameInfo.boxArt) {
+      boxArt.src = `https://retroachievements.org${gameInfo.boxArt}`;
+      boxArt.style.display = 'block';
+    }
+  } else {
+    gtEl.textContent = 'RetroAchievements';
+    gpEl.textContent = '';
+  }
+
+  if (!achievements || !achievements.length) {
+    document.getElementById('ach-container').innerHTML =
+      '<div class="state-msg">No achievements to display.<br>Configure in the setup page.</div>';
+    return;
+  }
+
+  const filter  = display.filter   || 'all';
+  const mode    = display.mode     || 'both';
+  const pinned  = new Set(display.pinned  || []);
+  const order   = display.order    || [];
+
+  // Filter
+  let visible = achievements.filter(a => {
+    if (filter === 'unearned')    return !a.earned;
+    if (filter === 'inprogress')  return !a.earned && a.maxProgress > 0 && a.userProgress > 0;
+    return true;
+  });
+
+  // Sort: pinned → custom order → default
+  const orderMap = new Map(order.map((id, i) => [id, i]));
+  visible.sort((a, b) => {
+    const aPin = pinned.has(a.id), bPin = pinned.has(b.id);
+    if (aPin !== bPin) return aPin ? -1 : 1;
+    const aI = orderMap.get(a.id) ?? 9999;
+    const bI = orderMap.get(b.id) ?? 9999;
+    return aI - bI;
+  });
+
+  // Only re-render DOM if the set/order changed (avoids Sortable disruption)
+  const newIds = visible.map(a => a.id + (pinned.has(a.id) ? 'p' : '') + a.earned).join(',');
+  if (newIds === lastAchIds && mode === lastDisplay.mode) return;
+  lastAchIds = newIds;
+
+  const container = document.getElementById('ach-container');
+
+  // Destroy old Sortable and observers before clearing DOM
+  if (sortable) { sortable.destroy(); sortable = null; }
+  tileObservers.forEach(o => o.disconnect());
+  tileObservers = [];
+
+  container.className = `mode-${mode}`;
+  container.innerHTML = '';
+
+  // Pinned label
+  if (pinned.size > 0 && visible.some(a => pinned.has(a.id)) && mode !== 'tiles') {
+    const lbl = document.createElement('div');
+    lbl.className   = 'section-label';
+    lbl.textContent = '★ Tracking';
+    container.appendChild(lbl);
+  }
+
+  for (const ach of visible) {
+    container.appendChild(buildTile(ach, display));
+  }
+
+  // Attach size observers for dynamic tile sizing (skip fixed tiles-mode)
+  if (mode !== 'tiles') {
+    container.querySelectorAll('.tile').forEach(tile => {
+      tileObservers.push(attachTileObserver(tile));
+    });
+  }
+
+  // Reinit Sortable
+  sortable = new Sortable(container, {
+    animation:    150,
+    ghostClass:   'sortable-ghost',
+    chosenClass:  'sortable-chosen',
+    filter:       '.section-label',
+    onEnd(evt) {
+      // Rebuild order from DOM
+      const ids = [...container.querySelectorAll('.tile')].map(el => parseInt(el.dataset.id));
+      sendOrder(ids);
+    },
+  });
+}
+
+function buildTile(ach, display) {
+  const isPinned = (display.pinned || []).includes(ach.id);
+  const locked   = !ach.earned;
+  const badgeSrc = `https://media.retroachievements.org/Badge/${ach.badge}${locked ? '_lock' : ''}.png`;
+  const pct      = ach.maxProgress > 0 ? Math.round(100 * ach.userProgress / ach.maxProgress) : 0;
+
+  const tile = document.createElement('div');
+  tile.className = `tile${ach.earned ? ' earned' : ''}${isPinned ? ' pinned' : ''}`;
+  tile.dataset.id = ach.id;
+
+  // Badge section
+  const badgeWrap = document.createElement('div');
+  badgeWrap.className = 'tile-badge';
+  const img = document.createElement('img');
+  img.src   = badgeSrc;
+  img.alt   = '';
+  img.className = locked ? 'locked' : '';
+  img.loading   = 'lazy';
+  img.onerror   = () => img.style.opacity = '0.2';
+  badgeWrap.appendChild(img);
+  if (ach.earned) {
+    const chk = document.createElement('div');
+    chk.className   = 'badge-earned';
+    chk.textContent = '✓';
+    badgeWrap.appendChild(chk);
+  }
+  tile.appendChild(badgeWrap);
+
+  // Content section
+  const content = document.createElement('div');
+  content.className = 'tile-content';
+
+  const header = document.createElement('div');
+  header.className = 'tile-header';
+  const nameEl = document.createElement('div');
+  nameEl.className   = 'tile-name';
+  nameEl.textContent = ach.title;
+  header.appendChild(nameEl);
+
+  if (display.showPoints !== false) {
+    const pts = document.createElement('div');
+    pts.className   = 'tile-points';
+    pts.textContent = `${ach.points} pts`;
+    header.appendChild(pts);
+  }
+  content.appendChild(header);
+
+  if (display.showDesc !== false) {
+    const desc = document.createElement('div');
+    desc.className   = 'tile-desc';
+    desc.textContent = ach.description;
+    content.appendChild(desc);
+  }
+
+  // Progress bar
+  if (ach.maxProgress > 0 && !ach.earned) {
+    const wrap = document.createElement('div');
+    wrap.className = 'progress-wrap';
+    wrap.innerHTML = `
+      <div class="progress-bar">
+        <div class="progress-fill" style="width:${pct}%"></div>
+      </div>
+      <div class="progress-label">${ach.userProgress.toLocaleString()} / ${ach.maxProgress.toLocaleString()} (${pct}%)</div>
+    `;
+    content.appendChild(wrap);
+  }
+
+  // Date earned
+  if (ach.earned && ach.dateEarned) {
+    const dt = document.createElement('div');
+    dt.className   = 'tile-date';
+    dt.textContent = 'Earned ' + formatDate(ach.dateEarned);
+    content.appendChild(dt);
+  }
+
+  tile.appendChild(content);
+  return tile;
+}
+
+// ── Styles ────────────────────────────────────────────────────────────────────
+
+function applyStyles(d) {
+  if (!d) return;
+  const r = document.documentElement.style;
+  const hexToRgb = h => {
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(h);
+    return m ? `${parseInt(m[1],16)},${parseInt(m[2],16)},${parseInt(m[3],16)}` : '13,13,13';
+  };
+  if (d.bgColor)     { r.setProperty('--bg-color', d.bgColor); r.setProperty('--bg-rgb', hexToRgb(d.bgColor)); }
+  if (d.bgOpacity !== undefined) r.setProperty('--bg-opacity', d.bgOpacity);
+  if (d.textColor)   r.setProperty('--text-color',   d.textColor);
+  if (d.accentColor) r.setProperty('--accent-color', d.accentColor);
+  if (d.goldColor)   r.setProperty('--gold-color',   d.goldColor);
+  if (d.fontSize)    r.setProperty('--font-size',    d.fontSize + 'px');
+  if (d.fontFamily)  r.setProperty('--font-family',  d.fontFamily);
+  if (d.badgeSize)   r.setProperty('--badge-size',   d.badgeSize + 'px');
+  if (d.tileGap)     r.setProperty('--tile-gap',     d.tileGap + 'px');
+  if (d.tileRadius)  r.setProperty('--tile-radius',  d.tileRadius + 'px');
+  if (d.panelWidth)  r.setProperty('--panel-width',  d.panelWidth + 'px');
+
+  // Dynamic bg on panel-header and tiles (respects opacity)
+  if (d.bgColor || d.bgOpacity !== undefined) {
+    const style = document.getElementById('dynStyle') || (() => {
+      const s = document.createElement('style');
+      s.id = 'dynStyle';
+      document.head.appendChild(s);
+      return s;
+    })();
+    const rgb = hexToRgb(d.bgColor || '#0d0d0d');
+    const op  = d.bgOpacity !== undefined ? d.bgOpacity : 0.88;
+    style.textContent = `
+      .tile { background: rgba(${rgb}, ${op}) !important; }
+      #panel-header { background: rgba(${rgb}, ${Math.min(op + 0.1, 1)}) !important; }
+    `;
+  }
+
+  lastDisplay = { ...d };
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+async function sendOrder(ids) {
+  try {
+    await fetch('/api/display', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order: ids }),
+    });
+  } catch(e) {}
+}
+
+function formatDate(s) {
+  if (!s) return '';
+  try {
+    const d = new Date(s.replace(' ', 'T') + 'Z');
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch(e) { return s.split(' ')[0]; }
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+
+poll();
+</script>
+</body>
+</html>

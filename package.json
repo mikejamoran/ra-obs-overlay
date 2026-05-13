@@ -1,0 +1,13 @@
+{
+  "name": "ra-obs-overlay",
+  "version": "1.0.0",
+  "description": "RetroAchievements achievement overlay for OBS Browser Source",
+  "main": "server.js",
+  "engines": { "node": ">=18.0.0" },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.0"
+  }
+}
