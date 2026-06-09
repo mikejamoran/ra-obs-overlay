@@ -632,6 +632,7 @@ input[type=color] {
           <button class="btn btn-sm" onclick="addWidget('social')">📡 Social</button>
           <button class="btn btn-sm" onclick="addWidget('scrolling_text')">📜 Scrolling Text</button>
           <button class="btn btn-sm" onclick="addWidget('image')">🖼 Image / GIF</button>
+          <button class="btn btn-sm" onclick="addWidget('chat')">💬 Chat</button>
         </div>
       </div>
 
@@ -1060,7 +1061,7 @@ let widgetList = [];
 
 const WIDGET_ICONS = {
   death_counter: '💀', timer: '⏱', countdown: '⏳',
-  social: '📡', scrolling_text: '📜', image: '🖼',
+  social: '📡', scrolling_text: '📜', image: '🖼', chat: '💬',
 };
 const PLATFORM_NAMES = { twitch:'Twitch', youtube:'YouTube', twitter:'X / Twitter', discord:'Discord', instagram:'Instagram', tiktok:'TikTok' };
 const PERMISSION_NAMES = { broadcaster:'Broadcaster only', mods:'Broadcaster + Mods', subscribers:'Subscribers+', followers:'Followers+', everyone:'Everyone', custom:'Custom list' };
@@ -1261,6 +1262,75 @@ function buildWidgetSettings(w) {
             <option value="fill"${c.objectFit==='fill'?' selected':''}>Fill</option>
           </select>
         </div>
+      </div>`;
+    frag.appendChild(el);
+  }
+
+  if (w.type === 'chat') {
+    const el = document.createElement('div');
+    el.innerHTML = `
+      <div class="field-row">
+        <div class="field"><label>Message font size</label>
+          <input type="number" min="10" max="40" value="${c.fontSize||14}" oninput="updateWidgetConfig('${w.id}',{fontSize:parseInt(this.value)||14})"></div>
+        <div class="field"><label>Username font size</label>
+          <input type="number" min="10" max="40" value="${c.usernameSize||14}" oninput="updateWidgetConfig('${w.id}',{usernameSize:parseInt(this.value)||14})"></div>
+      </div>
+      <div class="field-row" style="margin-top:8px">
+        <div class="field"><label>Text colour</label>
+          <input type="color" value="${c.color||'#e6edf3'}" oninput="updateWidgetConfig('${w.id}',{color:this.value})"></div>
+        <div class="field"><label>Background</label>
+          <input type="color" value="${c.bgColor||'#0d0d0d'}" oninput="updateWidgetConfig('${w.id}',{bgColor:this.value})"></div>
+        <div class="field"><label>BG opacity</label>
+          <input type="number" min="0" max="1" step="0.05" value="${c.bgOpacity??0.75}" oninput="updateWidgetConfig('${w.id}',{bgOpacity:parseFloat(this.value)})"></div>
+      </div>
+      <div class="field-row" style="margin-top:8px">
+        <div class="field"><label>Max messages</label>
+          <input type="number" min="1" max="100" value="${c.maxMessages||20}" oninput="updateWidgetConfig('${w.id}',{maxMessages:parseInt(this.value)||20})"></div>
+        <div class="field"><label>Message timeout (s, 0=off)</label>
+          <input type="number" min="0" max="600" value="${c.messageTimeout||0}" oninput="updateWidgetConfig('${w.id}',{messageTimeout:parseInt(this.value)||0})"></div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:12px">
+        <label class="check-opt ${c.usernameColors?'active':''}" style="width:auto;padding:7px 14px">
+          <input type="checkbox" ${c.usernameColors?'checked':''} onchange="updateWidgetConfig('${w.id}',{usernameColors:this.checked});this.closest('.check-opt').classList.toggle('active',this.checked)">
+          Twitch username colours
+        </label>
+        <label class="check-opt ${c.showBadges?'active':''}" style="width:auto;padding:7px 14px">
+          <input type="checkbox" ${c.showBadges?'checked':''} onchange="updateWidgetConfig('${w.id}',{showBadges:this.checked});this.closest('.check-opt').classList.toggle('active',this.checked)">
+          Show badges (MOD / SUB / VIP)
+        </label>
+        <label class="check-opt ${c.showTimestamp?'active':''}" style="width:auto;padding:7px 14px">
+          <input type="checkbox" ${c.showTimestamp?'checked':''} onchange="updateWidgetConfig('${w.id}',{showTimestamp:this.checked});this.closest('.check-opt').classList.toggle('active',this.checked)">
+          Show timestamps
+        </label>
+        <label class="check-opt ${c.filterCommands?'active':''}" style="width:auto;padding:7px 14px">
+          <input type="checkbox" ${c.filterCommands?'checked':''} onchange="updateWidgetConfig('${w.id}',{filterCommands:this.checked});this.closest('.check-opt').classList.toggle('active',this.checked)">
+          Hide !commands
+        </label>
+        <label class="check-opt ${c.showHeader?'active':''}" style="width:auto;padding:7px 14px">
+          <input type="checkbox" ${c.showHeader?'checked':''} onchange="updateWidgetConfig('${w.id}',{showHeader:this.checked});this.closest('.check-opt').classList.toggle('active',this.checked)">
+          Show header label
+        </label>
+      </div>
+      <div class="field-row" style="margin-top:8px">
+        <div class="field"><label>Header text</label>
+          <input type="text" value="${escHtml(c.headerText||'Chat')}" oninput="updateWidgetConfig('${w.id}',{headerText:this.value})"></div>
+        <div class="field"><label>Corner radius (px)</label>
+          <input type="number" min="0" max="40" value="${c.borderRadius??8}" oninput="updateWidgetConfig('${w.id}',{borderRadius:parseInt(this.value)||0})"></div>
+      </div>
+      <div class="field" style="margin-top:8px"><label>Message direction</label>
+        <div style="display:flex;gap:8px">
+          <label class="radio-opt ${(c.direction||'bottom')==='bottom'?'active':''}" style="width:auto;padding:7px 14px">
+            <input type="radio" name="chatDir-${w.id}" value="bottom" ${(c.direction||'bottom')==='bottom'?'checked':''}
+              onchange="updateWidgetConfig('${w.id}',{direction:'bottom'})"> Newest at bottom ↓
+          </label>
+          <label class="radio-opt ${c.direction==='top'?'active':''}" style="width:auto;padding:7px 14px">
+            <input type="radio" name="chatDir-${w.id}" value="top" ${c.direction==='top'?'checked':''}
+              onchange="updateWidgetConfig('${w.id}',{direction:'top'})"> Newest at top ↑
+          </label>
+        </div>
+      </div>
+      <div style="margin-top:10px;font-size:12px;color:var(--muted)">
+        Requires Twitch to be connected in Card 8. The widget updates live as messages arrive.
       </div>`;
     frag.appendChild(el);
   }

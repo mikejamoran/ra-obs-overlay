@@ -229,6 +229,47 @@ html, body {
 .w-scroll-inner { white-space: nowrap; display: inline-block; padding-left: 100%; animation: w-scroll var(--scroll-dur,20s) linear infinite; }
 @keyframes w-scroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }
 
+/* ── Widget: chat ────────────────────────────────────────────────────────────── */
+.chat-container {
+  width: 100%; height: 100%;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.chat-header {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.08em; color: rgba(255,255,255,0.4);
+  padding: 6px 10px 0; flex-shrink: 0;
+}
+.chat-list {
+  flex: 1; overflow-y: auto; overflow-x: hidden;
+  display: flex; flex-direction: column;
+  gap: 3px; padding: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.12) transparent;
+}
+.chat-list::-webkit-scrollbar { width: 3px; }
+.chat-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+.chat-msg {
+  display: flex; flex-wrap: wrap; align-items: baseline;
+  gap: 4px; line-height: 1.5;
+  animation: chatIn 0.18s ease;
+}
+@keyframes chatIn { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; } }
+.chat-badges { display: inline-flex; gap: 3px; align-items: center; flex-shrink: 0; }
+.chat-badge {
+  font-size: 9px; font-weight: 800; border-radius: 3px;
+  padding: 1px 5px; text-transform: uppercase; letter-spacing: 0.05em; line-height: 1.4;
+}
+.chat-badge.broadcaster { background: #e91916; color: #fff; }
+.chat-badge.moderator   { background: #00ad03; color: #fff; }
+.chat-badge.vip         { background: #e005b9; color: #fff; }
+.chat-badge.subscriber  { background: #8205b4; color: #fff; }
+.chat-username { font-weight: 700; flex-shrink: 0; cursor: default; }
+.chat-colon    { color: rgba(255,255,255,0.3); flex-shrink: 0; }
+.chat-text     { word-break: break-word; min-width: 0; }
+.chat-time     { font-size: 10px; color: rgba(255,255,255,0.25); flex-shrink: 0; margin-left: auto; padding-left: 6px; }
+.chat-empty    { color: rgba(255,255,255,0.25); font-size: 12px; text-align: center; padding: 24px 12px; line-height: 1.6; }
+
 /* ── Widget: image ───────────────────────────────────────────────────────────── */
 .w-image { width: 100%; height: 100%; }
 .w-image img { width: 100%; height: 100%; display: block; }
@@ -334,6 +375,8 @@ function handleWS(msg) {
   } else if (msg.type === 'widget_delete') {
     state.widgets = state.widgets.filter(w => w.id !== msg.id);
     document.getElementById('w-' + msg.id)?.remove();
+  } else if (msg.type === 'chat_message') {
+    appendChatMessage(msg);
   } else if (msg.type === 'achievements') {
     if (msg.achievements) state.achievements = msg.achievements;
     if (msg.gameInfo)     state.gameInfo     = msg.gameInfo;
@@ -778,6 +821,7 @@ function placeWidget(widget) {
     case 'social':         el.appendChild(buildSocial(widget));       break;
     case 'scrolling_text': el.appendChild(buildScrollText(widget));   break;
     case 'image':          el.appendChild(buildImage(widget));        break;
+    case 'chat':           el.appendChild(buildChat(widget));         break;
   }
 
   const endpoint = '/api/widgets/' + widget.id + '/position';
@@ -886,6 +930,130 @@ function buildScrollText(w) {
   if (c.direction === 'right') inner.style.animationDirection = 'reverse';
   outer.appendChild(inner);
   return outer;
+}
+
+function buildChat(w) {
+  const c = w.config;
+  const outer = document.createElement('div');
+  outer.className = 'chat-container';
+  outer.dataset.chatWidget = w.id;
+  const [r,g,b] = hexToRgb(c.bgColor || '#0d0d0d');
+  outer.style.background = `rgba(${r},${g},${b},${c.bgOpacity ?? 0.75})`;
+  outer.style.borderRadius = (c.borderRadius ?? 8) + 'px';
+
+  if (c.showHeader) {
+    const hdr = document.createElement('div');
+    hdr.className = 'chat-header';
+    hdr.textContent = c.headerText || 'Chat';
+    outer.appendChild(hdr);
+  }
+
+  const list = document.createElement('div');
+  list.className = 'chat-list';
+  list.style.flexDirection = c.direction === 'top' ? 'column-reverse' : 'column';
+
+  const empty = document.createElement('div');
+  empty.className = 'chat-empty';
+  empty.textContent = state.twitch?.connected
+    ? 'Waiting for chat…'
+    : 'Connect Twitch (Card 8 in setup) to display chat here.';
+  list.appendChild(empty);
+
+  outer.appendChild(list);
+  return outer;
+}
+
+function appendChatMessage(msg) {
+  document.querySelectorAll('[data-chat-widget]').forEach(container => {
+    const wid    = container.dataset.chatWidget;
+    const widget = state.widgets.find(w => w.id === wid);
+    if (!widget || !widget.visible) return;
+    const c = widget.config;
+
+    if (c.filterCommands && msg.message.trim().startsWith('!')) return;
+
+    // Remove placeholder
+    container.querySelector('.chat-empty')?.remove();
+
+    const list = container.querySelector('.chat-list');
+    if (!list) return;
+
+    const msgEl = document.createElement('div');
+    msgEl.className = 'chat-msg';
+    msgEl.style.fontSize = (c.fontSize || 14) + 'px';
+    msgEl.style.color = c.color || '#e6edf3';
+
+    // Badges
+    if (c.showBadges && Object.keys(msg.badges || {}).length) {
+      const badgeWrap = document.createElement('div');
+      badgeWrap.className = 'chat-badges';
+      const badgeOrder = ['broadcaster','moderator','vip','subscriber'];
+      for (const key of badgeOrder) {
+        if (msg.badges[key]) {
+          const b = document.createElement('span');
+          b.className = 'chat-badge ' + key;
+          const labels = { broadcaster:'LIVE', moderator:'MOD', vip:'VIP', subscriber:'SUB' };
+          b.textContent = labels[key] || key.toUpperCase();
+          badgeWrap.appendChild(b);
+        }
+      }
+      if (badgeWrap.children.length) msgEl.appendChild(badgeWrap);
+    }
+
+    // Username
+    const nameEl = document.createElement('span');
+    nameEl.className = 'chat-username';
+    nameEl.style.fontSize = (c.usernameSize || c.fontSize || 14) + 'px';
+    nameEl.style.color = c.usernameColors
+      ? (msg.color || hashColor(msg.username))
+      : (c.color || '#e6edf3');
+    nameEl.textContent = msg.username;
+    msgEl.appendChild(nameEl);
+
+    const colon = document.createElement('span');
+    colon.className = 'chat-colon'; colon.textContent = ':';
+    msgEl.appendChild(colon);
+
+    const text = document.createElement('span');
+    text.className = 'chat-text'; text.textContent = msg.message;
+    msgEl.appendChild(text);
+
+    if (c.showTimestamp) {
+      const t = document.createElement('span');
+      t.className = 'chat-time';
+      t.textContent = new Date(msg.timestamp).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+      msgEl.appendChild(t);
+    }
+
+    if (c.direction === 'top') {
+      list.insertBefore(msgEl, list.firstChild);
+    } else {
+      list.appendChild(msgEl);
+      list.scrollTop = list.scrollHeight;
+    }
+
+    // Max messages
+    const max = c.maxMessages || 20;
+    while (list.children.length > max) {
+      (c.direction === 'top' ? list.lastChild : list.firstChild).remove();
+    }
+
+    // Timeout fade
+    if (c.messageTimeout > 0) {
+      setTimeout(() => {
+        msgEl.style.transition = 'opacity 0.5s ease';
+        msgEl.style.opacity = '0';
+        setTimeout(() => msgEl.remove(), 520);
+      }, c.messageTimeout * 1000);
+    }
+  });
+}
+
+function hashColor(name) {
+  const palette = ['#ff6b6b','#feca57','#48dbfb','#ff9ff3','#54a0ff','#5f27cd','#00d2d3','#1dd1a1','#ff9f43','#f368e0'];
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h);
+  return palette[Math.abs(h) % palette.length];
 }
 
 function buildImage(w) {

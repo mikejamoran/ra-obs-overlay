@@ -144,6 +144,7 @@ const WIDGET_SIZES = {
   social:         { w: 280, h: 64  },
   scrolling_text: { w: 800, h: 56  },
   image:          { w: 200, h: 200 },
+  chat:           { w: 400, h: 500 },
 };
 
 function widgetDefaults(type) {
@@ -164,6 +165,16 @@ function widgetDefaults(type) {
                fontSize: 22, color: '#e6edf3', bgColor: '#0d0d0d', bgOpacity: 0 };
     case 'image':
       return { src: '', opacity: 1, objectFit: 'contain' };
+    case 'chat':
+      return {
+        fontSize: 14, usernameSize: 14, color: '#e6edf3',
+        bgColor: '#0d0d0d', bgOpacity: 0.75,
+        usernameColors: true, showBadges: true,
+        maxMessages: 20, messageTimeout: 0,
+        showTimestamp: false, direction: 'bottom',
+        filterCommands: false, borderRadius: 8,
+        showHeader: false, headerText: 'Chat',
+      };
     default: return {};
   }
 }
@@ -245,7 +256,19 @@ async function connectTwitch(channel, token) {
     identity: { username: channel, password },
     channels: [channel],
   });
-  twitchClient.on('message', (_ch, tags, message) => handleChatCommand(message, tags));
+  twitchClient.on('message', (_ch, tags, message) => {
+    handleChatCommand(message, tags);
+    if (S.widgets.some(w => w.type === 'chat' && w.visible)) {
+      broadcast({
+        type:      'chat_message',
+        username:  tags['display-name'] || tags.username || 'anon',
+        color:     tags.color || null,
+        message,
+        badges:    tags.badges || {},
+        timestamp: Date.now(),
+      });
+    }
+  });
   await twitchClient.connect();
   S.twitchConnected = true;
   S.twitchChannel   = channel;
