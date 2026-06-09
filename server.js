@@ -456,11 +456,13 @@ app.post('/api/display', basicAuth, (req, res) => {
   res.json({ ok: true });
 });
 
-// No auth — overlay calls this during drag
+// No auth — overlay calls this during drag/resize
 app.post('/api/display/position', (req, res) => {
-  const { x, y } = req.body || {};
-  if (typeof x === 'number') S.display.panelX = Math.round(x);
-  if (typeof y === 'number') S.display.panelY = Math.round(y);
+  const { x, y, w, h } = req.body || {};
+  if (typeof x === 'number') S.display.panelX     = Math.round(x);
+  if (typeof y === 'number') S.display.panelY     = Math.round(y);
+  if (typeof w === 'number') S.display.panelWidth = Math.round(w);
+  if (typeof h === 'number') S.display.panelH     = Math.round(h);
   saveConfig();
   res.json({ ok: true });
 });

@@ -192,6 +192,26 @@ html, body {
 .w-image { width: 100%; height: 100%; }
 .w-image img { width: 100%; height: 100%; display: block; }
 
+/* ── Resize handle ───────────────────────────────────────────────────────────── */
+.resize-handle {
+  position: absolute;
+  bottom: 0; right: 0;
+  width: 16px; height: 16px;
+  cursor: nwse-resize;
+  z-index: 99;
+}
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  bottom: 3px; right: 3px;
+  width: 8px; height: 8px;
+  border-right: 2px solid rgba(255,255,255,0.35);
+  border-bottom: 2px solid rgba(255,255,255,0.35);
+  border-radius: 0 0 2px 0;
+}
+.widget:hover .resize-handle::after,
+#ach-widget:hover .resize-handle::after { border-color: rgba(255,255,255,0.6); }
+
 /* ── Ticker ──────────────────────────────────────────────────────────────────── */
 #ticker { position: fixed; bottom: 6px; right: 8px; font-size: 10px; color: rgba(255,255,255,0.15); pointer-events: none; }
 </style>
@@ -410,6 +430,40 @@ function renderAchPanel() {
   panel.appendChild(cont);
   aw.appendChild(panel);
 
+  // Resize handle — re-appended each render so it stays on top
+  let rh = document.getElementById('ach-resize');
+  if (!rh) {
+    rh = document.createElement('div');
+    rh.id = 'ach-resize';
+    rh.className = 'resize-handle';
+    rh.dataset.nodrag = '1';
+    rh.addEventListener('mousedown', e => {
+      e.preventDefault(); e.stopPropagation();
+      const startX = e.clientX, startY = e.clientY;
+      const startW = aw.offsetWidth || (state.display.panelWidth || 440);
+      const startH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--panel-h')) || (state.display.panelH || 600);
+      document.body.style.userSelect = 'none'; document.body.style.cursor = 'nwse-resize';
+      function onMove(e) {
+        const nw = Math.max(200, startW + (e.clientX - startX));
+        const nh = Math.max(150, startH + (e.clientY - startY));
+        aw.style.width = nw + 'px';
+        document.documentElement.style.setProperty('--panel-width', nw + 'px');
+        document.documentElement.style.setProperty('--panel-h',     nh + 'px');
+      }
+      function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.body.style.userSelect = ''; document.body.style.cursor = '';
+        const w = Math.round(aw.offsetWidth);
+        const h = Math.round(parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--panel-h')) || 600);
+        state.display.panelWidth = w; state.display.panelH = h;
+        fetch('/api/display/position', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({w,h}) }).catch(()=>{});
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp, { once: true });
+    });
+  }
+  aw.appendChild(rh);
+
   // Recent panel
   renderRecentPanel(d, achs);
 }
@@ -586,7 +640,9 @@ function placeWidget(widget) {
     case 'image':          el.appendChild(buildImage(widget));        break;
   }
 
-  if (!widget.locked) makeDraggable(el, '/api/widgets/' + widget.id + '/position');
+  const endpoint = '/api/widgets/' + widget.id + '/position';
+  if (!widget.locked) makeDraggable(el, endpoint);
+  makeResizable(el, endpoint);
   canvas.appendChild(el);
 }
 
@@ -729,6 +785,42 @@ function makeDraggable(el, endpoint, onUpdate) {
       const y = Math.round(parseFloat(el.style.top)  || 0);
       if (onUpdate) onUpdate(x, y);
       fetch(endpoint, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({x,y}) }).catch(()=>{});
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp, { once: true });
+  });
+}
+
+// ── Resize ────────────────────────────────────────────────────────────────────
+
+function makeResizable(el, endpoint, minW = 80, minH = 40) {
+  const handle = document.createElement('div');
+  handle.className = 'resize-handle';
+  handle.dataset.nodrag = '1';
+  el.style.overflow = el.style.overflow || 'hidden';
+  el.appendChild(handle);
+
+  handle.addEventListener('mousedown', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX, startY = e.clientY;
+    const startW = el.offsetWidth, startH = el.offsetHeight;
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'nwse-resize';
+
+    function onMove(e) {
+      el.style.width  = Math.max(minW, startW + (e.clientX - startX)) + 'px';
+      el.style.height = Math.max(minH, startH + (e.clientY - startY)) + 'px';
+    }
+    function onUp() {
+      document.removeEventListener('mousemove', onMove);
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      const w = Math.round(el.offsetWidth), h = Math.round(el.offsetHeight);
+      fetch(endpoint, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ w, h }),
+      }).catch(() => {});
     }
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp, { once: true });
