@@ -1041,17 +1041,19 @@ wss.on('connection', ws => {
 // Auto-reconnect Twitch using saved OAuth token (preferred) or env token (fallback)
 async function autoConnectTwitch() {
   const token = S.twitchAccessToken || process.env.TWITCH_TOKEN;
-  if (!token || !S.twitchChannel) return;
-  try {
-    await connectTwitch(S.twitchChannel, token);
-  } catch (e) {
-    console.error('[Twitch] Auto-connect failed:', e.message);
-    // Saved token likely expired — refresh (which reconnects IRC) and carry on
-    if (S.twitchAccessToken && S.twitchRefreshToken && /login failed/i.test(e.message)) {
-      try { await refreshTwitchToken(); }
-      catch (e2) { console.error('[Twitch] Token refresh failed:', e2.message); return; }
-    } else return;
+  if (token && S.twitchChannel) {
+    try {
+      await connectTwitch(S.twitchChannel, token);
+    } catch (e) {
+      console.error('[Twitch] Auto-connect failed:', e.message);
+      // Saved token likely expired — refresh (which reconnects IRC) and carry on
+      if (S.twitchAccessToken && S.twitchRefreshToken && /login failed/i.test(e.message)) {
+        try { await refreshTwitchToken(); }
+        catch (e2) { console.error('[Twitch] Token refresh failed:', e2.message); }
+      }
+    }
   }
+  // EventSub is independent of IRC — start it even if chat couldn't connect
   if (S.twitchAccessToken) {
     await validateTwitchToken();
     eventsub.refresh();

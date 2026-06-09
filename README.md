@@ -84,6 +84,53 @@ Order changes are saved automatically.
 
 ---
 
+## Alerts & Triggers (MixItUp-style)
+
+Card **9 · Alerts & Triggers** on the setup page fires overlay alerts — any
+combination of **image/GIF/WebM + sound + text** — from Twitch events:
+
+| Trigger | Needs | Options |
+|---|---|---|
+| 🎁 Channel point redeem | Twitch reconnect (new scopes) | match by reward name or ID |
+| 💎 Bit cheer | basic chat connection | min-bits tiers or exact amount |
+| ❗ Chat `!command` | basic chat connection | permission level / custom user list, global + per-user cooldowns |
+| ⭐ Sub / resub / gift | Twitch reconnect (new scopes) | tier filter, include resubs/gifts |
+| 🚀 Raid | Twitch reconnect (new scopes) | minimum viewers |
+| 💜 Follow | Twitch reconnect (new scopes) | — |
+
+- **Queue** — alerts play one at a time. The [Control Panel](http://localhost:7890/control)
+  shows what's playing and queued, with **Skip**, **Clear queue**, and a **▶ Test**
+  button per trigger (test alerts work without any Twitch connection).
+- **Text templates** — use variables like `{user}`, `{amount}`, `{message}`,
+  `{reward}`, `{tier}`, `{viewers}`, `{channel}`.
+- **Re-auth** — channel points, subs, raids and follows use Twitch EventSub and
+  need extra OAuth scopes. If you connected Twitch before this feature existed,
+  the setup page shows a "Reconnect with Twitch" banner — one click re-consents.
+- **Duration vs. sound length** — an alert ends after its configured duration;
+  set the duration at least as long as the sound file or it will be cut off.
+
+### Sound & media library
+
+Alert media comes from two places (both browsable via the **Choose…** picker):
+
+1. **Uploads** — the setup page now accepts `mp3 / ogg / wav / webm` in addition
+   to images (max 25 MB), stored in `public/uploads/`.
+2. **Local folders** — add any folder that already exists on the server's drive
+   (Widgets card → *Media Library — Local Folders*). Files are served read-only
+   from `/media/<folder-id>/<file>`; subfolders are ignored.
+   ⚠ Anyone who can reach the server can fetch files in shared folders — only
+   share folders that contain stream media.
+
+### Alert audio in OBS
+
+OBS browser sources allow autoplay, so alert sounds just work in the `/obs`
+source. Tick **Control audio via OBS** on the browser source to route alert
+audio through the OBS mixer. When previewing in a normal browser, autoplay may
+be blocked until you click the page — open `/obs?mute=1` for a silent preview
+and to avoid hearing sounds twice while OBS is also open.
+
+---
+
 ## Update interval
 
 - Achievement progress refreshes every **2 minutes**
