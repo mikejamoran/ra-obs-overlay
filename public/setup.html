@@ -683,31 +683,47 @@ input[type=color] {
   <!-- ── Twitch Chat ─────────────────────────────────────────────────────────── -->
   <div class="card" id="card-twitch">
     <div class="card-header">
-      <h2>8 · Twitch Chat Commands</h2>
+      <h2>8 · Twitch Chat</h2>
       <span class="tag" id="twitchTag">Not connected</span>
     </div>
     <div class="card-body">
       <div id="twitchError" class="banner error hidden"></div>
-      <div class="field-row">
-        <div class="field">
-          <label>Channel name</label>
-          <input type="text" id="twitchChannel" placeholder="yourchannelname">
-        </div>
-        <div class="field">
-          <label>OAuth token <a href="https://twitchapps.com/tmi/" target="_blank" style="font-size:11px;margin-left:4px">Get token ↗</a></label>
-          <input type="password" id="twitchToken" placeholder="oauth:xxxxxxxxxxxxxxxx">
+
+      <!-- Connected state -->
+      <div id="twitchConnectedView" style="display:none">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+          <div class="dot ok"></div>
+          <span id="twitchStatus" style="font-size:14px;font-weight:600">Connected</span>
+          <button class="btn btn-sm" style="margin-left:auto" onclick="twitchDisconnect()">Disconnect</button>
         </div>
       </div>
-      <div style="display:flex;gap:10px;margin-top:12px;align-items:center">
-        <button class="btn btn-primary" id="twitchConnectBtn" onclick="twitchConnect()">Connect</button>
-        <button class="btn" id="twitchDisconnectBtn" onclick="twitchDisconnect()" style="display:none">Disconnect</button>
-        <span id="twitchStatus" style="font-size:13px;color:var(--muted)">Not connected</span>
+
+      <!-- Disconnected state -->
+      <div id="twitchDisconnectedView">
+        <a class="btn btn-primary" href="/auth/twitch" style="display:inline-flex;align-items:center;gap:8px;text-decoration:none">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M4.265 0L1 3.265v17.47h5.88V24l3.265-3.265h4.899L21.735 12V0H4.265zm15.853 11.35l-3.918 3.918H11.3l-3.265 3.265v-3.265H3.53V1.633h16.588V11.35zM16.47 5.1h-1.633v4.899H16.47V5.1zm-4.898 0H9.939v4.899h1.633V5.1z"/></svg>
+          Connect with Twitch
+        </a>
+        <div style="margin-top:16px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px">
+          <div style="font-size:13px;font-weight:700;margin-bottom:10px">First-time setup (one-off)</div>
+          <ol style="font-size:12px;color:var(--muted);line-height:2;padding-left:18px">
+            <li>Go to <a href="https://dev.twitch.tv/console/apps/create" target="_blank">dev.twitch.tv/console/apps/create</a></li>
+            <li>Name: anything (e.g. "Stream Overlay") &nbsp;·&nbsp; Category: <strong style="color:var(--text)">Chat Bot</strong></li>
+            <li>OAuth Redirect URL: <code style="background:var(--bg);padding:2px 6px;border-radius:4px" id="oauthRedirectUri"></code></li>
+            <li>Click <strong style="color:var(--text)">Create</strong>, then <strong style="color:var(--text)">Manage</strong></li>
+            <li>Copy <strong style="color:var(--text)">Client ID</strong> and generate a <strong style="color:var(--text)">New Secret</strong></li>
+            <li>SSH to the server and add to <code style="background:var(--bg);padding:2px 6px;border-radius:4px">~/apps/ra-obs-overlay/.env</code>:
+              <pre style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;margin:6px 0;font-size:11px">TWITCH_CLIENT_ID=paste_client_id_here
+TWITCH_CLIENT_SECRET=paste_secret_here</pre>
+            </li>
+            <li>Run <code style="background:var(--bg);padding:2px 6px;border-radius:4px">pm2 restart ra-obs-overlay</code>, then click <strong style="color:var(--text)">Connect with Twitch</strong> above</li>
+          </ol>
+        </div>
       </div>
+
       <div style="margin-top:16px;font-size:12px;color:var(--muted);line-height:1.7">
-        <strong style="color:var(--text)">How it works:</strong><br>
-        Each Death Counter widget has its own chat command (default <code>!death</code>).<br>
-        Viewers can type <code>!death++</code> / <code>!death--</code> / <code>!death reset</code> in chat.<br>
-        Permission level is configurable per widget in the Widgets section above.
+        <strong style="color:var(--text)">Chat commands:</strong> Each Death Counter widget has a configurable command (default <code>!death</code>).<br>
+        <code>!death++</code> / <code>!death--</code> / <code>!death reset</code> — permission level set per widget.
       </div>
     </div>
   </div>
@@ -1457,37 +1473,34 @@ async function deleteUpload(filename, thumbEl) {
 
 // ── Twitch ────────────────────────────────────────────────────────────────────
 
-async function twitchConnect() {
-  const channel = document.getElementById('twitchChannel').value.trim();
-  const token   = document.getElementById('twitchToken').value.trim();
-  if (!channel || !token) { alert('Enter channel name and token.'); return; }
-  document.getElementById('twitchError').classList.add('hidden');
-  try {
-    const res = await api('/api/twitch/connect', 'POST', { channel, token });
-    if (res.ok) setTwitchConnected(true, channel);
-    else { document.getElementById('twitchError').textContent = res.error; document.getElementById('twitchError').classList.remove('hidden'); }
-  } catch(e) { document.getElementById('twitchError').textContent = e.message; document.getElementById('twitchError').classList.remove('hidden'); }
-}
-
 async function twitchDisconnect() {
   await api('/api/twitch/disconnect', 'POST');
   setTwitchConnected(false);
 }
 
 function setTwitchConnected(connected, channel) {
-  document.getElementById('twitchConnectBtn').style.display    = connected ? 'none' : '';
-  document.getElementById('twitchDisconnectBtn').style.display = connected ? '' : 'none';
-  document.getElementById('twitchStatus').textContent = connected ? `Connected to #${channel}` : 'Not connected';
-  document.getElementById('twitchTag').textContent    = connected ? '🟢 Connected' : 'Not connected';
-  document.getElementById('twitchTag').className      = 'tag' + (connected ? ' green' : '');
+  document.getElementById('twitchConnectedView').style.display    = connected ? '' : 'none';
+  document.getElementById('twitchDisconnectedView').style.display = connected ? 'none' : '';
+  const status = document.getElementById('twitchStatus');
+  if (status) status.textContent = connected ? `Connected as #${channel}` : 'Not connected';
+  document.getElementById('twitchTag').textContent = connected ? '🟢 Connected' : 'Not connected';
+  document.getElementById('twitchTag').className   = 'tag' + (connected ? ' green' : '');
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 async function initExtended(cfg) {
+  // Show the correct OAuth redirect URI in the instructions
+  const uriEl = document.getElementById('oauthRedirectUri');
+  if (uriEl) uriEl.textContent = window.location.origin + '/auth/twitch/callback';
+
+  // If redirected back from Twitch OAuth, show a success banner
+  if (new URLSearchParams(location.search).get('twitch') === 'connected') {
+    history.replaceState({}, '', '/');
+  }
+
   // Twitch status
   if (cfg.twitch?.connected) {
-    document.getElementById('twitchChannel').value = cfg.twitch.channel || '';
     setTwitchConnected(true, cfg.twitch.channel);
   }
   // Achievement panel controls

@@ -46,8 +46,10 @@ let S = {
     panelVisible: true, panelLocked: false,
   },
   widgets: [],
-  twitchConnected: false,
-  twitchChannel:   process.env.TWITCH_CHANNEL || '',
+  twitchConnected:  false,
+  twitchChannel:    process.env.TWITCH_CHANNEL || '',
+  twitchAccessToken:  null,
+  twitchRefreshToken: null,
   lastAchRefresh:  0,
   lastGameCheck:   0,
   nowPlayingId:    null,
@@ -66,7 +68,9 @@ function loadConfig() {
       if (saved.display)       Object.assign(S.display, saved.display);
       if (saved.gameId)        S.gameId = saved.gameId;
       if (saved.widgets)       S.widgets = saved.widgets;
-      if (saved.twitchChannel) S.twitchChannel = saved.twitchChannel;
+      if (saved.twitchChannel)      S.twitchChannel      = saved.twitchChannel;
+      if (saved.twitchAccessToken)  S.twitchAccessToken  = saved.twitchAccessToken;
+      if (saved.twitchRefreshToken) S.twitchRefreshToken = saved.twitchRefreshToken;
     } catch (e) { console.error('[config] Load error:', e.message); }
   }
   if (process.env.RA_USERNAME)    S.creds.username = process.env.RA_USERNAME;
@@ -79,6 +83,7 @@ function saveConfig() {
     fs.writeFileSync(CONFIG_FILE, JSON.stringify({
       creds: S.creds, display: S.display, gameId: S.gameId,
       widgets: S.widgets, twitchChannel: S.twitchChannel,
+      twitchAccessToken: S.twitchAccessToken, twitchRefreshToken: S.twitchRefreshToken,
     }, null, 2));
   } catch (e) { console.error('[config] Save error:', e.message); }
 }
@@ -676,23 +681,89 @@ app.delete('/api/uploads/:filename', basicAuth, (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Routes: Twitch ──────────────────────────────────────────────────────────────
+// ── Routes: Twitch OAuth 2.0 ────────────────────────────────────────────────────
 
-app.post('/api/twitch/connect', basicAuth, async (req, res) => {
-  const { channel, token } = req.body || {};
-  if (!channel || !token) return res.status(400).json({ error: 'channel and token required' });
+const TWITCH_AUTH_URL  = 'https://id.twitch.tv/oauth2/authorize';
+const TWITCH_TOKEN_URL = 'https://id.twitch.tv/oauth2/token';
+const TWITCH_SCOPE     = 'chat:read';
+
+let oauthState = null;
+
+// Step 1 — redirect to Twitch
+app.get('/auth/twitch', basicAuth, (req, res) => {
+  const clientId = process.env.TWITCH_CLIENT_ID;
+  if (!clientId) {
+    return res.status(400).send(
+      '<h2>TWITCH_CLIENT_ID not set</h2>' +
+      '<p>Add it to your .env file. See the Twitch setup card in the admin page for instructions.</p>' +
+      '<a href="/">← Back to setup</a>'
+    );
+  }
+  oauthState = crypto.randomBytes(16).toString('hex');
+  const redirectUri = `${req.protocol}://${req.get('host')}/auth/twitch/callback`;
+  const url = new URL(TWITCH_AUTH_URL);
+  url.searchParams.set('client_id',     clientId);
+  url.searchParams.set('redirect_uri',  redirectUri);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('scope',         TWITCH_SCOPE);
+  url.searchParams.set('state',         oauthState);
+  url.searchParams.set('force_verify',  'true');
+  res.redirect(url.toString());
+});
+
+// Step 2 — Twitch redirects back with a code
+app.get('/auth/twitch/callback', basicAuth, async (req, res) => {
+  const { code, state, error, error_description } = req.query;
+  const fail = msg => res.send(`<h2>Twitch auth failed</h2><p>${msg}</p><a href="/">← Back to setup</a>`);
+
+  if (error)         return fail(`${error}: ${error_description || ''}`);
+  if (state !== oauthState) return fail('State mismatch — possible CSRF. Try again.');
+  if (!code)         return fail('No code received from Twitch.');
+
+  const clientId     = process.env.TWITCH_CLIENT_ID;
+  const clientSecret = process.env.TWITCH_CLIENT_SECRET;
+  const redirectUri  = `${req.protocol}://${req.get('host')}/auth/twitch/callback`;
+
+  if (!clientSecret) return fail('TWITCH_CLIENT_SECRET not set in .env');
+
   try {
-    await connectTwitch(channel, token);
+    // Exchange code → access token
+    const tokenRes = await fetch(TWITCH_TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret,
+                                  code, grant_type: 'authorization_code', redirect_uri: redirectUri }),
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenData.access_token) return fail('Token exchange failed: ' + JSON.stringify(tokenData));
+
+    // Get the authenticated user's login name
+    const userRes = await fetch('https://api.twitch.tv/helix/users', {
+      headers: { 'Authorization': `Bearer ${tokenData.access_token}`, 'Client-Id': clientId },
+    });
+    const userData = await userRes.json();
+    const channel  = userData.data?.[0]?.login;
+    if (!channel) return fail('Could not retrieve Twitch username.');
+
+    // Store token in memory (persisted to config for auto-reconnect)
+    S.twitchChannel      = channel;
+    S.twitchAccessToken  = tokenData.access_token;
+    S.twitchRefreshToken = tokenData.refresh_token || null;
     saveConfig();
-    res.json({ ok: true, connected: S.twitchConnected });
+
+    await connectTwitch(channel, tokenData.access_token);
+    res.redirect('/?twitch=connected');
   } catch (e) {
-    S.twitchConnected = false;
-    res.status(502).json({ ok: false, error: e.message });
+    fail(e.message);
   }
 });
 
+// Manual disconnect
 app.post('/api/twitch/disconnect', basicAuth, async (req, res) => {
   await disconnectTwitch();
+  S.twitchAccessToken  = null;
+  S.twitchRefreshToken = null;
+  saveConfig();
   res.json({ ok: true });
 });
 
@@ -724,6 +795,10 @@ wss.on('connection', ws => {
   ws.send(JSON.stringify(getFullState()));
 });
 
-if (process.env.TWITCH_TOKEN && S.twitchChannel) {
-  connectTwitch(S.twitchChannel, process.env.TWITCH_TOKEN).catch(console.error);
+// Auto-reconnect Twitch using saved OAuth token (preferred) or env token (fallback)
+const twitchAutoToken = S.twitchAccessToken || process.env.TWITCH_TOKEN;
+if (twitchAutoToken && S.twitchChannel) {
+  connectTwitch(S.twitchChannel, twitchAutoToken).catch(e =>
+    console.error('[Twitch] Auto-connect failed:', e.message)
+  );
 }
