@@ -1198,6 +1198,27 @@ function buildWidgetSettings(w) {
       <div class="field" id="customUsersRow-${w.id}" style="${c.chatPermission==='custom'?'':'display:none'}">
         <label>Allowed usernames (comma-separated)</label>
         <input type="text" value="${escHtml(c.chatAllowedUsers||'')}" oninput="updateWidgetConfig('${w.id}',{chatAllowedUsers:this.value})">
+      </div>
+      <hr class="divider" style="margin:12px 0">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Chat Announcements</div>
+      <label class="check-opt ${c.chatAnnounce?'active':''}" style="width:fit-content;margin-bottom:10px">
+        <input type="checkbox" ${c.chatAnnounce?'checked':''} onchange="updateWidgetConfig('${w.id}',{chatAnnounce:this.checked});this.closest('.check-opt').classList.toggle('active',this.checked)">
+        Post a message in chat when deaths change
+      </label>
+      <div class="field">
+        <label>Increment / decrement message</label>
+        <input type="text" value="${escHtml(c.chatAnnounceTemplate||'')}"
+          placeholder="[streamername] died again! That's [death count] death(s)"
+          oninput="updateWidgetConfig('${w.id}',{chatAnnounceTemplate:this.value})">
+        <div style="font-size:11px;color:var(--muted);margin-top:5px">
+          Wildcards: <code>[streamername]</code> &nbsp; <code>[death count]</code> &nbsp; <code>[label]</code>
+        </div>
+      </div>
+      <div class="field" style="margin-top:8px">
+        <label>Reset message <span style="font-weight:400;color:var(--muted)">(leave blank to disable)</span></label>
+        <input type="text" value="${escHtml(c.chatAnnounceReset||'')}"
+          placeholder="[streamername] has reset the death counter!"
+          oninput="updateWidgetConfig('${w.id}',{chatAnnounceReset:this.value})">
       </div>`;
     // Show/hide custom users based on permission select
     const select = el.querySelector('select');

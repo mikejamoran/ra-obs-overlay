@@ -157,7 +157,10 @@ function widgetDefaults(type) {
   switch (type) {
     case 'death_counter':
       return { ...base, count: 0, label: 'Deaths', step: 1,
-               chatCommand: '!death', chatPermission: 'mods', chatAllowedUsers: '' };
+               chatCommand: '!death', chatPermission: 'mods', chatAllowedUsers: '',
+               chatAnnounce: false,
+               chatAnnounceTemplate: '[streamername] died again! That\'s [death count] death(s) PogChamp',
+               chatAnnounceReset: '' };
     case 'timer':
       return { ...base, label: 'Timer', running: false, startedAt: null, pausedElapsed: 0 };
     case 'countdown':
@@ -270,6 +273,7 @@ function handleChatCommand(msg, tags) {
     else if (suffix === 'reset') action = 'reset';
     if (!action || !checkChatPermission(widget, tags)) continue;
     applyWidgetAction(widget, { action });
+    announceDeathAction(widget, action);
     saveConfig();
     broadcast({ type: 'widget_update', widget });
   }
@@ -333,9 +337,11 @@ function connectTwitch(channel, token) {
           resolve();
         }
 
-        // PRIVMSG — chat message
-        const pm = rest.match(/^:\S+ PRIVMSG #\S+ :(.+)$/);
-        if (pm) onTwitchMessage(tags, pm[1]);
+        // PRIVMSG — chat message (skip own messages to prevent loops)
+        const pm = rest.match(/^:(\S+)!\S+ PRIVMSG #\S+ :(.+)$/);
+        if (pm && pm[1].toLowerCase() !== channel.toLowerCase()) {
+          onTwitchMessage(tags, pm[2]);
+        }
       }
     });
 
@@ -364,6 +370,32 @@ function disconnectTwitch() {
   twitchWs = null;
   S.twitchConnected = false;
   broadcast({ type: 'twitch_status', connected: false });
+}
+
+function sendTwitchMessage(message) {
+  if (!twitchWs || twitchWs.readyState !== 1 || !S.twitchChannel) return;
+  twitchWs.send(`PRIVMSG #${S.twitchChannel.toLowerCase()} :${message}\r\n`);
+}
+
+function renderAnnounceTemplate(template, widget) {
+  return template
+    .replace(/\[death count\]/gi, widget.config.count ?? 0)
+    .replace(/\[count\]/gi,       widget.config.count ?? 0)
+    .replace(/\[streamername\]/gi, S.twitchChannel || '')
+    .replace(/\[channel\]/gi,      S.twitchChannel || '')
+    .replace(/\[label\]/gi,        widget.config.label || 'Deaths')
+    .replace(/\[step\]/gi,         widget.config.step  || 1);
+}
+
+function announceDeathAction(widget, action) {
+  if (!widget.config.chatAnnounce) return;
+  let template = '';
+  if ((action === 'increment' || action === 'decrement') && widget.config.chatAnnounceTemplate) {
+    template = widget.config.chatAnnounceTemplate;
+  } else if (action === 'reset' && widget.config.chatAnnounceReset) {
+    template = widget.config.chatAnnounceReset;
+  }
+  if (template) sendTwitchMessage(renderAnnounceTemplate(template, widget));
 }
 
 // ── RA API ──────────────────────────────────────────────────────────────────────
@@ -652,7 +684,9 @@ app.post('/api/widgets/:id/position', (req, res) => {
 app.post('/api/widgets/:id/action', basicAuth, (req, res) => {
   const w = S.widgets.find(w => w.id === req.params.id);
   if (!w) return res.status(404).json({ error: 'not found' });
-  applyWidgetAction(w, req.body || {});
+  const body = req.body || {};
+  applyWidgetAction(w, body);
+  if (w.type === 'death_counter') announceDeathAction(w, body.action);
   saveConfig();
   broadcast({ type: 'widget_update', widget: w });
   res.json({ ok: true, widget: w });
@@ -686,7 +720,7 @@ app.delete('/api/uploads/:filename', basicAuth, (req, res) => {
 
 const TWITCH_AUTH_URL  = 'https://id.twitch.tv/oauth2/authorize';
 const TWITCH_TOKEN_URL = 'https://id.twitch.tv/oauth2/token';
-const TWITCH_SCOPE     = 'chat:read';
+const TWITCH_SCOPE     = 'chat:read chat:edit';
 
 let oauthState = null;
 
