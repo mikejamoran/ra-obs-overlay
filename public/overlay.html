@@ -4,9 +4,7 @@
 <meta charset="UTF-8">
 <title>RA Overlay</title>
 <style>
-/* ── Reset ──────────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
 html, body {
   width: 100%; height: 100%;
   background: transparent;
@@ -16,896 +14,776 @@ html, body {
   color: var(--text-color, #e6edf3);
 }
 
-/* ── CSS Variables (overridden by JS) ───────────────────────────────────────── */
-:root {
-  --bg-color:     #0d0d0d;
-  --bg-opacity:   0.88;
-  --text-color:   #e6edf3;
-  --muted-color:  #8b949e;
-  --accent-color: #1f6feb;
-  --gold-color:   #e3b341;
-  --success-color:#3fb950;
-  --font-size:    13px;
-  --font-family:  "Segoe UI", system-ui, sans-serif;
-  --badge-size:   56px;
-  --tile-gap:     8px;
-  --tile-radius:  8px;
-  --panel-width:  440px;
-}
+#canvas { position: absolute; inset: 0; }
 
-/* ── Panel positioning ──────────────────────────────────────────────────────── */
-#panel {
-  position: fixed;
-  width: var(--panel-width);
-  max-height: calc(100vh - 32px);
+/* ── Achievement widget positioning ─────────────────────────────────────────── */
+#ach-widget {
+  position: absolute;
+  cursor: grab;
   display: flex;
   flex-direction: column;
-  transition: all 0.4s ease;
+  gap: 8px;
 }
+#ach-widget.locked { cursor: default; }
+#ach-widget.pos-top-left     { top: 16px; left: 16px; }
+#ach-widget.pos-top-center   { top: 16px; left: 50%; transform: translateX(-50%); }
+#ach-widget.pos-top-right    { top: 16px; right: 16px; }
+#ach-widget.pos-center-left  { top: 50%; left: 16px; transform: translateY(-50%); }
+#ach-widget.pos-center       { top: 50%; left: 50%; transform: translate(-50%,-50%); }
+#ach-widget.pos-center-right { top: 50%; right: 16px; transform: translateY(-50%); }
+#ach-widget.pos-bottom-left  { bottom: 16px; left: 16px; }
+#ach-widget.pos-bottom-center{ bottom: 16px; left: 50%; transform: translateX(-50%); }
+#ach-widget.pos-bottom-right { bottom: 16px; right: 16px; }
 
-/* Position classes */
-#panel.top-left     { top: 16px; left: 16px; }
-#panel.top-center   { top: 16px; left: 50%; transform: translateX(-50%); }
-#panel.top-right    { top: 16px; right: 16px; }
-#panel.center-left  { top: 50%; left: 16px; transform: translateY(-50%); }
-#panel.center       { top: 50%; left: 50%; transform: translate(-50%,-50%); }
-#panel.center-right { top: 50%; right: 16px; transform: translateY(-50%); }
-#panel.bottom-left  { bottom: 16px; left: 16px; }
-#panel.bottom-center{ bottom: 16px; left: 50%; transform: translateX(-50%); }
-#panel.bottom-right { bottom: 16px; right: 16px; }
-
-/* ── Panel header ───────────────────────────────────────────────────────────── */
+/* ── Achievement panel ───────────────────────────────────────────────────────── */
+#panel {
+  width: var(--panel-width, 440px);
+  max-height: var(--panel-h, 600px);
+  display: flex;
+  flex-direction: column;
+}
 #panel-header {
   background: rgba(0,0,0,0.6);
   border-radius: var(--tile-radius) var(--tile-radius) 0 0;
   border: 1px solid rgba(255,255,255,0.08);
   border-bottom: none;
   padding: 8px 12px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  display: flex; align-items: center; gap: 10px;
   flex-shrink: 0;
 }
-#game-box-art {
-  width: 36px; height: 36px; border-radius: 4px; object-fit: cover;
-  flex-shrink: 0; display: none;
-}
+#game-box-art { width: 36px; height: 36px; border-radius: 4px; object-fit: cover; flex-shrink: 0; display: none; }
 #game-title   { font-size: 13px; font-weight: 700; flex: 1; line-height: 1.3; }
 #game-progress{ font-size: 11px; color: var(--muted-color); }
-
-/* ── Achievements container ─────────────────────────────────────────────────── */
 #ach-container {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
+  flex: 1; overflow-y: auto; overflow-x: hidden;
   scrollbar-width: thin;
   scrollbar-color: rgba(255,255,255,0.15) transparent;
-  display: flex;
-  flex-direction: column;
-  gap: var(--tile-gap);
-  padding: 4px 0;
+  display: flex; flex-direction: column; gap: var(--tile-gap); padding: 4px 0;
 }
 #ach-container::-webkit-scrollbar { width: 4px; }
 #ach-container::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
+.state-msg { color: rgba(255,255,255,0.4); font-size: 13px; text-align: center; padding: 24px 16px; }
 
-/* ── Empty / Loading state ──────────────────────────────────────────────────── */
-.state-msg {
-  color: rgba(255,255,255,0.4);
-  font-size: 13px;
-  text-align: center;
-  padding: 24px 16px;
-}
-
-/* ── TILE: "both" mode (default, RA website style) ──────────────────────────── */
+/* ── Tile (both mode) ────────────────────────────────────────────────────────── */
 .tile {
-  background: rgba(var(--bg-rgb, 13,13,13), var(--bg-opacity, 0.88));
+  background: rgba(var(--bg-rgb,13,13,13), var(--bg-opacity,0.88));
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: var(--tile-radius);
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
+  display: flex; align-items: flex-start; gap: 10px;
   padding: 10px 12px;
-  cursor: grab;
-  user-select: none;
+  cursor: grab; user-select: none;
   transition: border-color 0.2s, box-shadow 0.2s;
-  position: relative;
-  resize: both;
-  overflow: hidden;
-  min-width: 80px;
-  min-height: 40px;
-  flex-shrink: 0;
+  position: relative; resize: both; overflow: hidden;
+  min-width: 80px; min-height: 40px; flex-shrink: 0;
 }
 .tile:active { cursor: grabbing; }
 .tile:hover  { border-color: rgba(255,255,255,0.18); }
-
-/* Earned: subtle left accent */
-.tile.earned {
-  border-left: 3px solid var(--success-color);
-  opacity: 0.6;
-}
-/* Pinned: gold glow */
-.tile.pinned {
-  border-color: var(--gold-color) !important;
-  box-shadow: 0 0 12px rgba(227,179,65,0.25), inset 0 0 0 1px rgba(227,179,65,0.1);
-  opacity: 1 !important;
-}
-/* Sortable drag ghost */
-.tile.sortable-ghost { opacity: 0.3; }
+.tile.earned { border-left: 3px solid var(--success-color); opacity: 0.6; }
+.tile.pinned { border-color: var(--gold-color) !important; box-shadow: 0 0 12px rgba(227,179,65,0.25), inset 0 0 0 1px rgba(227,179,65,0.1); opacity: 1 !important; }
+.tile.sortable-ghost  { opacity: 0.3; }
 .tile.sortable-chosen { box-shadow: 0 4px 20px rgba(0,0,0,0.6); z-index: 10; }
-
-/* Badge */
-.tile-badge {
-  flex-shrink: 0;
-  position: relative;
-  width: var(--badge-size);
-  height: var(--badge-size);
-}
-.tile-badge img {
-  width: 100%; height: 100%;
-  border-radius: 6px;
-  object-fit: cover;
-  display: block;
-}
+.tile-badge { flex-shrink: 0; position: relative; width: var(--badge-size); height: var(--badge-size); }
+.tile-badge img { width: 100%; height: 100%; border-radius: 6px; object-fit: cover; display: block; }
 .tile-badge img.locked { filter: grayscale(1) opacity(0.5); }
-
-/* Earned checkmark overlay on badge */
-.badge-earned {
-  position: absolute;
-  bottom: -4px; right: -4px;
-  width: 16px; height: 16px;
-  background: var(--success-color);
-  border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 9px; color: #fff; font-weight: 700;
-  border: 1.5px solid rgba(0,0,0,0.4);
-}
-
-/* Content */
+.badge-earned { position: absolute; bottom: -4px; right: -4px; width: 16px; height: 16px; background: var(--success-color); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #fff; font-weight: 700; border: 1.5px solid rgba(0,0,0,0.4); }
 .tile-content { flex: 1; min-width: 0; }
-
-.tile-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
-.tile-name {
-  font-size: var(--font-size);
-  font-weight: 700;
-  line-height: 1.3;
-  color: var(--text-color);
-  flex: 1;
-  min-width: 0;
-}
-.tile-points {
-  flex-shrink: 0;
-  font-size: 11px;
-  font-weight: 600;
-  background: rgba(255,255,255,0.08);
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 12px;
-  padding: 2px 8px;
-  color: var(--muted-color);
-  white-space: nowrap;
-}
+.tile-header  { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.tile-name    { font-size: var(--font-size); font-weight: 700; line-height: 1.3; color: var(--text-color); flex: 1; min-width: 0; }
+.tile-points  { flex-shrink: 0; font-size: 11px; font-weight: 600; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 2px 8px; color: var(--muted-color); white-space: nowrap; }
 .tile.pinned .tile-points { background: rgba(227,179,65,0.15); border-color: var(--gold-color); color: var(--gold-color); }
 .tile.earned .tile-points { background: rgba(63,185,80,0.12); border-color: var(--success-color); color: var(--success-color); }
-
-.tile-desc {
-  font-size: calc(var(--font-size) - 1px);
-  color: var(--muted-color);
-  line-height: 1.4;
-  margin-top: 3px;
-}
-
-/* Progress bar */
-.progress-wrap { margin-top: 6px; }
-.progress-bar {
-  height: 6px;
-  background: rgba(255,255,255,0.1);
-  border-radius: 3px;
-  overflow: hidden;
-}
-.progress-fill {
-  height: 100%;
-  background: var(--accent-color);
-  border-radius: 3px;
-  transition: width 0.5s ease;
-}
+.tile-desc    { font-size: calc(var(--font-size) - 1px); color: var(--muted-color); line-height: 1.4; margin-top: 3px; }
+.progress-wrap  { margin-top: 6px; }
+.progress-bar   { height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; }
+.progress-fill  { height: 100%; background: var(--accent-color); border-radius: 3px; transition: width 0.5s ease; }
 .tile.pinned .progress-fill { background: var(--gold-color); }
-.progress-label {
-  font-size: 10px;
-  color: var(--muted-color);
-  margin-top: 3px;
-  text-align: right;
-}
+.progress-label { font-size: 10px; color: var(--muted-color); margin-top: 3px; text-align: right; }
+.tile-date  { font-size: 10px; color: var(--muted-color); margin-top: 3px; }
+.dismiss-btn { position: absolute; top: 4px; right: 6px; font-size: 14px; line-height: 1; color: rgba(255,255,255,0.25); cursor: pointer; background: none; border: none; padding: 2px 4px; border-radius: 3px; }
+.dismiss-btn:hover { color: rgba(255,255,255,0.6); }
 
-.tile-date {
-  font-size: 10px;
-  color: var(--muted-color);
-  margin-top: 3px;
-}
-
-/* ── Size-adaptive tile classes (set by ResizeObserver) ─────────────────────── */
-/* sz-xs: w < 100 — badge icon only */
-.tile.sz-xs {
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: center;
-  padding: 4px;
-  gap: 0;
-}
+/* Size classes */
+.tile.sz-xs { flex-direction: column; align-items: stretch; justify-content: center; padding: 4px; gap: 0; }
 .tile.sz-xs .tile-content { display: none; }
-.tile.sz-xs .tile-badge   { flex: 1; width: 100%; height: 100%; }
+.tile.sz-xs .tile-badge { flex: 1; width: 100%; height: 100%; }
 .tile.sz-xs .tile-badge img { width: 100%; height: 100%; object-fit: contain; border-radius: 4px; }
+.tile.sz-sm { flex-direction: column; align-items: center; text-align: center; padding: 8px 6px; gap: 5px; }
+.tile.sz-sm .tile-content { width: 100%; }
+.tile.sz-sm .tile-header  { justify-content: center; }
+.tile.sz-sm .tile-name    { font-size: 10px; font-weight: 600; line-height: 1.2; }
+.tile.sz-sm .tile-points, .tile.sz-sm .tile-desc, .tile.sz-sm .tile-date, .tile.sz-sm .progress-wrap { display: none; }
+.tile.sz-md .tile-desc, .tile.sz-md .tile-date, .tile.sz-md .progress-wrap { display: none; }
+.tile.sz-lg .tile-date, .tile.sz-lg .progress-wrap { display: none; }
 
-/* sz-sm: w 100–159 — column RA tile: badge + name */
-.tile.sz-sm {
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding: 8px 6px;
-  gap: 5px;
-}
-.tile.sz-sm .tile-content  { width: 100%; }
-.tile.sz-sm .tile-header   { justify-content: center; }
-.tile.sz-sm .tile-name     { font-size: 10px; font-weight: 600; line-height: 1.2; }
-.tile.sz-sm .tile-points,
-.tile.sz-sm .tile-desc,
-.tile.sz-sm .tile-date,
-.tile.sz-sm .progress-wrap { display: none; }
-
-/* sz-md: w ≥ 160, h < 72 — row: badge + name + points */
-.tile.sz-md .tile-desc,
-.tile.sz-md .tile-date,
-.tile.sz-md .progress-wrap { display: none; }
-
-/* sz-lg: w ≥ 160, h 72–109 — row: + description */
-.tile.sz-lg .tile-date,
-.tile.sz-lg .progress-wrap { display: none; }
-
-/* sz-xl: w ≥ 160, h ≥ 110 — full detail (default styles apply) */
-
-/* ── TILE: "tiles" mode ─────────────────────────────────────────────────────── */
-#ach-container.mode-tiles {
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-content: flex-start;
-}
+/* Tiles mode */
+#ach-container.mode-tiles { flex-direction: row; flex-wrap: wrap; align-content: flex-start; }
 #ach-container.mode-tiles .tile {
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  width: calc(var(--badge-size) + 24px);
-  padding: 8px;
-  gap: 6px;
-  resize: none;
-  cursor: pointer;
+  flex-direction: column; align-items: center; text-align: center;
+  width: calc(var(--badge-size) + 24px); padding: 8px; gap: 6px; resize: none; cursor: pointer;
 }
-#ach-container.mode-tiles .tile-content { width: 100%; }
-#ach-container.mode-tiles .tile-header { justify-content: center; }
-#ach-container.mode-tiles .tile-name { font-size: 10px; font-weight: 600; }
-#ach-container.mode-tiles .tile-desc,
-#ach-container.mode-tiles .tile-date,
-#ach-container.mode-tiles .progress-wrap { display: none; }
-#ach-container.mode-tiles .tile-points { display: none; }
+#ach-container.mode-tiles .tile.expanded { flex-direction: row; text-align: left; align-items: flex-start; width: auto; min-width: 200px; cursor: grab; resize: both; }
+#ach-container.mode-tiles .tile.sz-xs, #ach-container.mode-tiles .tile.sz-sm { flex-direction: column; }
+#ach-container.mode-tiles .tile.expanded.sz-xs, #ach-container.mode-tiles .tile.expanded.sz-sm { flex-direction: column; }
+.expand-hint { position: absolute; bottom: 2px; right: 4px; font-size: 8px; color: rgba(255,255,255,0.2); }
 
-/* Expanded tile in tiles mode — row layout showing full detail */
-#ach-container.mode-tiles .tile.expanded {
-  flex-direction: row;
-  align-items: flex-start;
-  text-align: left;
-  width: 100%;
-  padding: 10px 12px;
-  gap: 10px;
-  resize: both;
-  cursor: grab;
-}
-#ach-container.mode-tiles .tile.expanded .tile-badge {
-  width: var(--badge-size);
-  height: var(--badge-size);
-  flex-shrink: 0;
-}
-#ach-container.mode-tiles .tile.expanded .tile-content { flex: 1; width: auto; }
-#ach-container.mode-tiles .tile.expanded .tile-header { justify-content: space-between; }
-#ach-container.mode-tiles .tile.expanded .tile-name {
-  font-size: var(--font-size);
-  font-weight: 700;
-  line-height: 1.3;
-}
-#ach-container.mode-tiles .tile.expanded .tile-desc,
-#ach-container.mode-tiles .tile.expanded .tile-date,
-#ach-container.mode-tiles .tile.expanded .progress-wrap { display: block; }
-#ach-container.mode-tiles .tile.expanded .tile-points { display: inline-flex; }
+/* Text mode */
+.tile-text { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 6px; background: rgba(var(--bg-rgb,13,13,13), var(--bg-opacity,0.88)); border-left: 3px solid var(--accent-color); cursor: default; flex-shrink: 0; }
+.tile-text.earned { border-left-color: var(--success-color); opacity: 0.55; }
+.tile-text.pinned { border-left-color: var(--gold-color); opacity: 1; }
+.tile-text-badge { width: 28px; height: 28px; border-radius: 4px; object-fit: cover; flex-shrink: 0; }
+.tile-text-badge.locked { filter: grayscale(1) opacity(0.5); }
+.tile-text-name { font-size: calc(var(--font-size) - 1px); font-weight: 600; flex: 1; color: var(--text-color); }
+.tile-text-pts  { font-size: 10px; color: var(--muted-color); flex-shrink: 0; }
 
-/* Dismiss (×) button */
-.dismiss-btn {
-  position: absolute;
-  top: 3px; right: 3px;
-  width: 15px; height: 15px;
-  background: rgba(0,0,0,0.35);
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 9px; line-height: 1;
-  color: rgba(255,255,255,0.35);
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.15s, background 0.15s, color 0.15s;
-  z-index: 5;
-  user-select: none;
-}
-.tile:hover .dismiss-btn { opacity: 1; }
-.dismiss-btn:hover { background: rgba(200,50,50,0.6); color: #fff; border-color: rgba(200,50,50,0.5); }
-
-/* Expand hint chevron */
-.expand-hint {
-  position: absolute;
-  bottom: 3px; right: 4px;
-  font-size: 8px;
-  color: rgba(255,255,255,0.25);
-  line-height: 1;
-  pointer-events: none;
-  transition: color 0.15s;
-}
-#ach-container.mode-tiles .tile:hover .expand-hint { color: rgba(255,255,255,0.5); }
-.tile.expanded .expand-hint { transform: rotate(180deg); }
-
-/* ── TILE: "text" mode ──────────────────────────────────────────────────────── */
-#ach-container.mode-text .tile-badge { display: none; }
-#ach-container.mode-text .tile { padding: 7px 12px; }
-
-/* ── Pinned section header ───────────────────────────────────────────────────── */
-.section-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: rgba(227,179,65,0.7);
-  padding: 6px 4px 2px;
-  flex-shrink: 0;
-}
-
-/* ── Recent panel ───────────────────────────────────────────────────────────── */
+/* Recent panel */
 #recent-panel {
   position: fixed;
-  width: var(--panel-width);
-  max-height: calc(100vh - 32px);
-  display: flex;
-  flex-direction: column;
-  transition: all 0.4s ease;
+  width: var(--panel-width, 440px);
+  display: flex; flex-direction: column; gap: var(--tile-gap);
 }
-
-#recent-panel.top-left     { top: 16px; left: 16px; }
-#recent-panel.top-center   { top: 16px; left: 50%; transform: translateX(-50%); }
-#recent-panel.top-right    { top: 16px; right: 16px; }
-#recent-panel.center-left  { top: 50%; left: 16px; transform: translateY(-50%); }
-#recent-panel.center       { top: 50%; left: 50%; transform: translate(-50%,-50%); }
-#recent-panel.center-right { top: 50%; right: 16px; transform: translateY(-50%); }
 #recent-panel.bottom-left  { bottom: 16px; left: 16px; }
-#recent-panel.bottom-center{ bottom: 16px; left: 50%; transform: translateX(-50%); }
 #recent-panel.bottom-right { bottom: 16px; right: 16px; }
+#recent-panel.top-left     { top: 16px; left: 16px; }
+#recent-panel.top-right    { top: 16px; right: 16px; }
+.recent-tile { background: rgba(var(--bg-rgb,13,13,13), var(--bg-opacity,0.88)); border: 1px solid rgba(255,255,255,0.08); border-left: 3px solid var(--gold-color); border-radius: var(--tile-radius); padding: 6px 10px; display: flex; align-items: center; gap: 8px; animation: slideIn 0.4s ease; }
+@keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+.recent-badge { width: 32px; height: 32px; border-radius: 4px; object-fit: cover; flex-shrink: 0; }
+.recent-title { font-size: 12px; font-weight: 600; flex: 1; }
+.recent-pts   { font-size: 10px; color: var(--gold-color); flex-shrink: 0; }
+.recent-date  { font-size: 10px; color: var(--muted-color); }
 
-#recent-header {
-  background: rgba(0,0,0,0.6);
-  border-radius: var(--tile-radius) var(--tile-radius) 0 0;
-  border: 1px solid rgba(255,255,255,0.08);
-  border-bottom: none;
-  padding: 6px 12px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-shrink: 0;
-}
-#recent-label {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--gold-color);
-}
-#recent-count-label {
-  font-size: 10px;
-  color: var(--muted-color);
-}
+/* ── Widget base ─────────────────────────────────────────────────────────────── */
+.widget { position: absolute; cursor: grab; }
+.widget:active { cursor: grabbing; }
+.widget.locked { cursor: default; }
 
-#recent-container {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,0.15) transparent;
-  display: flex;
-  flex-direction: column;
-  gap: var(--tile-gap);
-  padding: 4px 0;
+/* ── Widget: box (death counter, timer, countdown) ───────────────────────────── */
+.w-box {
+  width: 100%; height: 100%;
+  background: rgba(var(--w-bg-rgb,13,13,13), var(--w-bg-opacity,0.85));
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 8px 14px;
 }
-#recent-container::-webkit-scrollbar { width: 4px; }
-#recent-container::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
+.w-label { font-size: 13px; color: rgba(255,255,255,0.45); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 2px; }
+.w-value { font-weight: 700; color: var(--w-color, #e6edf3); line-height: 1; font-variant-numeric: tabular-nums; }
 
-/* Mirror tiles-mode layout for recent container */
-#recent-container.mode-tiles {
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-content: flex-start;
+/* ── Widget: social ──────────────────────────────────────────────────────────── */
+.w-social {
+  width: 100%; height: 100%;
+  background: rgba(var(--w-bg-rgb,13,13,13), var(--w-bg-opacity,0.85));
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px;
+  overflow: hidden;
 }
-#recent-container.mode-tiles .tile {
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  width: calc(var(--badge-size) + 24px);
-  padding: 8px;
-  gap: 6px;
-  resize: none;
-  cursor: pointer;
-}
-#recent-container.mode-tiles .tile-content { width: 100%; }
-#recent-container.mode-tiles .tile-header { justify-content: center; }
-#recent-container.mode-tiles .tile-name { font-size: 10px; font-weight: 600; }
-#recent-container.mode-tiles .tile-desc,
-#recent-container.mode-tiles .tile-date,
-#recent-container.mode-tiles .progress-wrap { display: none; }
-#recent-container.mode-tiles .tile-points { display: none; }
-#recent-container.mode-tiles .tile.expanded {
-  flex-direction: row;
-  align-items: flex-start;
-  text-align: left;
-  width: 100%;
-  padding: 10px 12px;
-  gap: 10px;
-  resize: both;
-  cursor: grab;
-}
-#recent-container.mode-tiles .tile.expanded .tile-badge { width: var(--badge-size); height: var(--badge-size); flex-shrink: 0; }
-#recent-container.mode-tiles .tile.expanded .tile-content { flex: 1; width: auto; }
-#recent-container.mode-tiles .tile.expanded .tile-header { justify-content: space-between; }
-#recent-container.mode-tiles .tile.expanded .tile-name { font-size: var(--font-size); font-weight: 700; line-height: 1.3; }
-#recent-container.mode-tiles .tile.expanded .tile-desc,
-#recent-container.mode-tiles .tile.expanded .tile-date,
-#recent-container.mode-tiles .tile.expanded .progress-wrap { display: block; }
-#recent-container.mode-tiles .tile.expanded .tile-points { display: inline-flex; }
-#recent-container.mode-tiles .tile:hover .expand-hint { color: rgba(255,255,255,0.5); }
+.w-social-icon { flex-shrink: 0; display: flex; align-items: center; }
+.w-social-text { font-weight: 600; color: var(--w-color,#e6edf3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-#recent-container.mode-text .tile-badge { display: none; }
-#recent-container.mode-text .tile { padding: 7px 12px; }
+/* ── Widget: scrolling text ──────────────────────────────────────────────────── */
+.w-scroll-outer { width: 100%; height: 100%; overflow: hidden; display: flex; align-items: center; background: rgba(var(--w-bg-rgb,13,13,13), var(--w-bg-opacity,0)); }
+.w-scroll-inner { white-space: nowrap; display: inline-block; padding-left: 100%; animation: w-scroll var(--scroll-dur,20s) linear infinite; }
+@keyframes w-scroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }
 
-/* ── Update ticker ──────────────────────────────────────────────────────────── */
-#ticker {
-  position: fixed;
-  bottom: 8px; right: 8px;
-  font-size: 10px;
-  color: rgba(255,255,255,0.2);
-  pointer-events: none;
-  user-select: none;
-}
+/* ── Widget: image ───────────────────────────────────────────────────────────── */
+.w-image { width: 100%; height: 100%; }
+.w-image img { width: 100%; height: 100%; display: block; }
+
+/* ── Ticker ──────────────────────────────────────────────────────────────────── */
+#ticker { position: fixed; bottom: 6px; right: 8px; font-size: 10px; color: rgba(255,255,255,0.15); pointer-events: none; }
 </style>
 </head>
 <body>
+<div id="canvas"></div>
+<div id="ticker"></div>
 
-<div id="panel" class="top-right">
-  <div id="panel-header">
-    <img id="game-box-art" src="" alt="">
-    <div>
-      <div id="game-title">RetroAchievements</div>
-      <div id="game-progress"></div>
-    </div>
-  </div>
-  <div id="ach-container">
-    <div class="state-msg">Loading…</div>
-  </div>
-</div>
-
-<div id="recent-panel" style="display:none">
-  <div id="recent-header">
-    <div id="recent-label">★ Recently Earned</div>
-    <div id="recent-count-label"></div>
-  </div>
-  <div id="recent-container"></div>
-</div>
-
-<div id="ticker">⟳ —</div>
-
-<!-- SortableJS for drag-to-reorder -->
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.3/Sortable.min.js"></script>
-
 <script>
-'use strict';
+// ── CSS custom properties ─────────────────────────────────────────────────────
 
-const POLL_INTERVAL = 15_000;  // 15 s
+const BADGE_BASE = 'https://media.retroachievements.org/Badge';
 
-let sortable       = null;
-let lastDisplay    = {};
-let lastAchIds     = '';
-let tileObservers  = [];
-let expandedTiles   = new Set();
-let dismissedTiles  = new Set();
-let isDragging      = false;
-let lastRecentIds   = '';
-let recentObservers = [];
-
-// ── Tile size observer ────────────────────────────────────────────────────────
-
-const W_XS = 100, W_SM = 160, H_MD = 72, H_LG = 110;
-
-function getTileSizeClass(w, h) {
-  if (w < W_XS) return 'sz-xs';
-  if (w < W_SM) return 'sz-sm';
-  if (h < H_MD) return 'sz-md';
-  if (h < H_LG) return 'sz-lg';
-  return 'sz-xl';
+function hexToRgb(hex) {
+  if (!hex || hex.length < 7) return [13,13,13];
+  return [
+    parseInt(hex.slice(1,3),16),
+    parseInt(hex.slice(3,5),16),
+    parseInt(hex.slice(5,7),16),
+  ];
 }
 
-function attachTileObserver(tile) {
-  const obs = new ResizeObserver(entries => {
-    const { width, height } = entries[0].contentRect;
-    const cls = getTileSizeClass(width, height);
-    tile.classList.remove('sz-xs', 'sz-sm', 'sz-md', 'sz-lg', 'sz-xl');
-    tile.classList.add(cls);
-  });
-  obs.observe(tile);
-  return obs;
+function applyStyles(d) {
+  const root  = document.documentElement;
+  const [r,g,b] = hexToRgb(d.bgColor || '#0d0d0d');
+  root.style.setProperty('--bg-color',     d.bgColor  || '#0d0d0d');
+  root.style.setProperty('--bg-rgb',       `${r},${g},${b}`);
+  root.style.setProperty('--bg-opacity',   d.bgOpacity ?? 0.88);
+  root.style.setProperty('--text-color',   d.textColor   || '#e6edf3');
+  root.style.setProperty('--muted-color',  '#8b949e');
+  root.style.setProperty('--accent-color', d.accentColor || '#1f6feb');
+  root.style.setProperty('--gold-color',   d.goldColor   || '#e3b341');
+  root.style.setProperty('--success-color','#3fb950');
+  root.style.setProperty('--font-size',    (d.fontSize || 13) + 'px');
+  root.style.setProperty('--font-family',  d.fontFamily || '"Segoe UI", system-ui, sans-serif');
+  root.style.setProperty('--badge-size',   (d.badgeSize || 56) + 'px');
+  root.style.setProperty('--tile-gap',     (d.tileGap   || 8) + 'px');
+  root.style.setProperty('--tile-radius',  (d.tileRadius|| 8) + 'px');
+  root.style.setProperty('--panel-width',  (d.panelWidth|| 440) + 'px');
+  root.style.setProperty('--panel-h',      (d.panelH    || 600) + 'px');
 }
 
-// ── Polling ───────────────────────────────────────────────────────────────────
+// ── State ─────────────────────────────────────────────────────────────────────
 
-async function poll() {
-  try {
-    const state = await fetch('/api/state').then(r => r.json());
-    render(state);
-    const d = new Date();
-    document.getElementById('ticker').textContent =
-      `⟳ ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
-  } catch(e) {
-    document.getElementById('ticker').textContent = '⟳ err';
+let state = { display: {}, achievements: [], gameInfo: {}, widgets: [], connected: false };
+let dismissed = new Set();
+let achSortable = null;
+let resizeObservers = [];
+
+// ── WebSocket ─────────────────────────────────────────────────────────────────
+
+let ws, wsReconnect;
+
+function connectWS() {
+  clearTimeout(wsReconnect);
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}`);
+  ws.onmessage = e => { try { handleWS(JSON.parse(e.data)); } catch {} };
+  ws.onclose   = () => { wsReconnect = setTimeout(connectWS, 3000); };
+  ws.onerror   = () => ws.close();
+}
+
+function handleWS(msg) {
+  if (msg.type === 'state') {
+    state = msg;
+    renderAll();
+  } else if (msg.type === 'widget_update') {
+    const idx = state.widgets.findIndex(w => w.id === msg.widget.id);
+    if (idx >= 0) state.widgets[idx] = msg.widget; else state.widgets.push(msg.widget);
+    patchWidget(msg.widget);
+  } else if (msg.type === 'widget_add') {
+    state.widgets.push(msg.widget);
+    if (msg.widget.visible) placeWidget(msg.widget);
+  } else if (msg.type === 'widget_delete') {
+    state.widgets = state.widgets.filter(w => w.id !== msg.id);
+    document.getElementById('w-' + msg.id)?.remove();
+  } else if (msg.type === 'achievements') {
+    if (msg.achievements) state.achievements = msg.achievements;
+    if (msg.gameInfo)     state.gameInfo     = msg.gameInfo;
+    if (msg.display)      Object.assign(state.display, msg.display);
+    applyStyles(state.display);
+    renderAchPanel();
   }
-  setTimeout(poll, POLL_INTERVAL);
 }
 
-// ── Render ────────────────────────────────────────────────────────────────────
+// ── Render all ────────────────────────────────────────────────────────────────
 
-function render(state) {
-  const { gameInfo, achievements, display } = state;
+function renderAll() {
+  applyStyles(state.display);
+  renderAchPanel();
 
-  applyStyles(display);
+  // Clear non-achievement widgets
+  document.querySelectorAll('.widget').forEach(el => el.remove());
 
-  // Panel position
-  const panel = document.getElementById('panel');
-  panel.className = display.panelPos || 'top-right';
+  for (const w of state.widgets) {
+    if (w.visible) placeWidget(w);
+  }
+}
 
-  // Game header
-  const boxArt = document.getElementById('game-box-art');
-  const gtEl   = document.getElementById('game-title');
-  const gpEl   = document.getElementById('game-progress');
-  if (gameInfo && gameInfo.title) {
-    gtEl.textContent = gameInfo.title;
-    gpEl.textContent = `${gameInfo.earned || 0} / ${gameInfo.numAch || 0} achievements`;
-    if (gameInfo.boxArt) {
-      boxArt.src = `https://retroachievements.org${gameInfo.boxArt}`;
-      boxArt.style.display = 'block';
-    }
+// ── Achievement panel ─────────────────────────────────────────────────────────
+
+function renderAchPanel() {
+  const d    = state.display || {};
+  const achs = state.achievements || [];
+  const gi   = state.gameInfo || {};
+  const canvas = document.getElementById('canvas');
+
+  let aw = document.getElementById('ach-widget');
+  if (!aw) {
+    aw = document.createElement('div');
+    aw.id = 'ach-widget';
+    canvas.insertBefore(aw, canvas.firstChild);
+  }
+
+  if (d.panelVisible === false) { aw.style.display = 'none'; return; }
+  aw.style.display = '';
+
+  // Position
+  if (d.panelX !== null && d.panelX !== undefined) {
+    aw.className = d.panelLocked ? 'locked' : '';
+    aw.style.left = d.panelX + 'px';
+    aw.style.top  = d.panelY + 'px';
+    aw.style.transform = '';
+    aw.style.right = '';
+    aw.style.bottom = '';
   } else {
-    gtEl.textContent = 'RetroAchievements';
-    gpEl.textContent = '';
+    aw.className = 'pos-' + (d.panelPos || 'top-right') + (d.panelLocked ? ' locked' : '');
+    aw.style.left = ''; aw.style.top = ''; aw.style.right = ''; aw.style.bottom = '';
+    aw.style.transform = '';
+  }
+  aw.style.zIndex = d.panelZIndex || 10;
+
+  if (!d.panelLocked) makeDraggable(aw, '/api/display/position', (x, y) => { state.display.panelX = x; state.display.panelY = y; });
+
+  // Build panel HTML
+  aw.innerHTML = '';
+  const panel = document.createElement('div');
+  panel.id = 'panel';
+
+  // Header
+  if (gi.title) {
+    const hdr = document.createElement('div');
+    hdr.id = 'panel-header';
+    const art = document.createElement('img');
+    art.id = 'game-box-art';
+    if (gi.boxArt) { art.src = 'https://retroachievements.org' + gi.boxArt; art.style.display = 'block'; }
+    const info = document.createElement('div');
+    info.style.flex = '1';
+    info.innerHTML = `<div id="game-title">${escHtml(gi.title)}</div><div id="game-progress">${gi.earned || 0} / ${gi.numAch || 0} achievements</div>`;
+    hdr.appendChild(art);
+    hdr.appendChild(info);
+    panel.appendChild(hdr);
   }
 
-  if (!achievements || !achievements.length) {
-    document.getElementById('ach-container').innerHTML =
-      '<div class="state-msg">No achievements to display.<br>Configure in the setup page.</div>';
-    renderRecent(state);
-    return;
-  }
+  // Container
+  const cont = document.createElement('div');
+  cont.id = 'ach-container';
+  const mode = d.mode || 'both';
+  cont.className = 'mode-' + mode;
 
-  const filter  = display.filter   || 'all';
-  const mode    = display.mode     || 'both';
-  const pinned  = new Set(display.pinned  || []);
-  const order   = display.order    || [];
-
-  // Filter
-  let visible = achievements.filter(a => {
-    if (dismissedTiles.has(a.id)) return false;
-    if (filter === 'unearned')    return !a.earned;
-    if (filter === 'inprogress')  return !a.earned && a.maxProgress > 0 && a.userProgress > 0;
+  // Sort achievements
+  let list = [...achs].filter(a => !dismissed.has(a.id));
+  const pinned = new Set(d.pinned || []);
+  const orderMap = new Map((d.order || []).map((id, i) => [id, i]));
+  list = list.filter(a => {
+    if (d.filter === 'unearned') return !a.earned;
+    if (d.filter === 'inprogress') return !a.earned && a.maxProgress > 0;
     return true;
   });
-
-  // Sort: pinned → custom order → default
-  const orderMap = new Map(order.map((id, i) => [id, i]));
-  visible.sort((a, b) => {
-    const aPin = pinned.has(a.id), bPin = pinned.has(b.id);
-    if (aPin !== bPin) return aPin ? -1 : 1;
-    const aI = orderMap.get(a.id) ?? 9999;
-    const bI = orderMap.get(b.id) ?? 9999;
-    return aI - bI;
+  list.sort((a, b) => {
+    const ap = pinned.has(a.id) ? 0 : 1, bp = pinned.has(b.id) ? 0 : 1;
+    if (ap !== bp) return ap - bp;
+    const ao = orderMap.has(a.id) ? orderMap.get(a.id) : 9999;
+    const bo = orderMap.has(b.id) ? orderMap.get(b.id) : 9999;
+    return ao - bo;
   });
 
-  // Only re-render DOM if the set/order changed (avoids Sortable disruption)
-  const newIds = visible.map(a => a.id + (pinned.has(a.id) ? 'p' : '') + a.earned).join(',');
-  if (newIds === lastAchIds && mode === lastDisplay.mode) return;
-  lastAchIds = newIds;
-
-  const container = document.getElementById('ach-container');
-
-  // Destroy old Sortable and observers before clearing DOM
-  if (sortable) { sortable.destroy(); sortable = null; }
-  tileObservers.forEach(o => o.disconnect());
-  tileObservers = [];
-
-  if (mode !== 'tiles') expandedTiles.clear();
-  container.className = `mode-${mode}`;
-  container.innerHTML = '';
-
-  // Pinned label
-  if (pinned.size > 0 && visible.some(a => pinned.has(a.id)) && mode !== 'tiles') {
-    const lbl = document.createElement('div');
-    lbl.className   = 'section-label';
-    lbl.textContent = '★ Tracking';
-    container.appendChild(lbl);
+  if (!list.length) {
+    const msg = document.createElement('div');
+    msg.className = 'state-msg';
+    msg.textContent = state.connected ? 'No achievements to display.' : 'Not connected';
+    cont.appendChild(msg);
+  } else if (mode === 'text') {
+    for (const a of list) cont.appendChild(buildTextRow(a, d, pinned));
+  } else {
+    for (const a of list) {
+      const tile = buildTile(a, d, pinned);
+      cont.appendChild(tile);
+    }
+    // Sortable in both/tiles mode
+    if (achSortable) { try { achSortable.destroy(); } catch {} achSortable = null; }
+    resizeObservers.forEach(ro => ro.disconnect());
+    resizeObservers = [];
+    setTimeout(() => {
+      achSortable = new Sortable(cont, {
+        animation: 150,
+        ghostClass: 'sortable-ghost', chosenClass: 'sortable-chosen',
+        onEnd: () => {
+          const ids = [...cont.querySelectorAll('.tile')].map(t => parseInt(t.dataset.id));
+          fetch('/api/display', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order: ids }),
+          }).catch(() => {});
+        },
+      });
+      cont.querySelectorAll('.tile').forEach(tile => {
+        const ro = new ResizeObserver(() => updateTileSizeClass(tile));
+        ro.observe(tile);
+        resizeObservers.push(ro);
+        updateTileSizeClass(tile);
+      });
+    }, 0);
   }
 
-  for (const ach of visible) {
-    container.appendChild(buildTile(ach, display));
-  }
+  panel.appendChild(cont);
+  aw.appendChild(panel);
 
-  // Attach size observers for dynamic tile sizing (skip fixed tiles-mode)
-  if (mode !== 'tiles') {
-    container.querySelectorAll('.tile').forEach(tile => {
-      tileObservers.push(attachTileObserver(tile));
-    });
-  }
-
-  // Restore expanded state after DOM rebuild
-  if (mode === 'tiles') {
-    container.querySelectorAll('.tile').forEach(tile => {
-      if (expandedTiles.has(parseInt(tile.dataset.id))) {
-        tile.classList.add('expanded');
-      }
-    });
-  }
-
-  // Reinit Sortable
-  sortable = new Sortable(container, {
-    animation:    150,
-    ghostClass:   'sortable-ghost',
-    chosenClass:  'sortable-chosen',
-    filter:       '.section-label, .dismiss-btn',
-    onStart() { isDragging = true; },
-    onEnd(evt) {
-      setTimeout(() => { isDragging = false; }, 0);
-      // Rebuild order from DOM
-      const ids = [...container.querySelectorAll('.tile')].map(el => parseInt(el.dataset.id));
-      sendOrder(ids);
-    },
-  });
-
-  renderRecent(state);
+  // Recent panel
+  renderRecentPanel(d, achs);
 }
 
-// ── Recent panel ──────────────────────────────────────────────────────────────
+function buildTile(a, d, pinned) {
+  const el = document.createElement('div');
+  el.dataset.id = a.id;
+  el.className  = 'tile' + (a.earned ? ' earned' : '') + (pinned.has(a.id) ? ' pinned' : '');
 
-function renderRecent(state) {
-  const { achievements, display } = state;
-  const panel = document.getElementById('recent-panel');
+  // Dismiss button
+  const dis = document.createElement('button');
+  dis.className = 'dismiss-btn'; dis.textContent = '×'; dis.title = 'Dismiss';
+  dis.dataset.nodrag = '1';
+  dis.onclick = () => { dismissed.add(a.id); el.remove(); };
+  el.appendChild(dis);
 
-  if (!display.recentEnabled) {
-    panel.style.display = 'none';
-    return;
-  }
-
-  panel.style.display = 'flex';
-  panel.className = display.recentPos || 'bottom-left';
-
-  const mode  = display.mode  || 'both';
-  const count = display.recentCount || 3;
-
-  // Earned only, sorted by date descending, excluding dismissed tiles
-  const recent = (achievements || [])
-    .filter(a => a.earned && a.dateEarned && !dismissedTiles.has(a.id))
-    .sort((a, b) => {
-      const da = new Date(a.dateEarned.replace(' ', 'T') + 'Z');
-      const db = new Date(b.dateEarned.replace(' ', 'T') + 'Z');
-      return db - da;
-    })
-    .slice(0, count);
-
-  const cacheKey = recent.map(a => a.id).join(',') + '|' + mode + '|' + count;
-  if (cacheKey === lastRecentIds) return;
-  lastRecentIds = cacheKey;
-
-  const container = document.getElementById('recent-container');
-  const countEl   = document.getElementById('recent-count-label');
-  countEl.textContent = recent.length ? `${recent.length} recent` : '';
-
-  recentObservers.forEach(o => o.disconnect());
-  recentObservers = [];
-
-  container.className = `mode-${mode}`;
-  container.innerHTML = '';
-
-  if (!recent.length) {
-    container.innerHTML = '<div class="state-msg">No earned achievements yet.</div>';
-    return;
-  }
-
-  for (const ach of recent) {
-    container.appendChild(buildTile(ach, display));
-  }
-
-  if (mode !== 'tiles') {
-    container.querySelectorAll('.tile').forEach(tile => {
-      recentObservers.push(attachTileObserver(tile));
-    });
-  }
-}
-
-function buildTile(ach, display) {
-  const isPinned = (display.pinned || []).includes(ach.id);
-  const locked   = !ach.earned;
-  const badgeSrc = `https://media.retroachievements.org/Badge/${ach.badge}${locked ? '_lock' : ''}.png`;
-  const pct      = ach.maxProgress > 0 ? Math.round(100 * ach.userProgress / ach.maxProgress) : 0;
-
-  const tile = document.createElement('div');
-  tile.className = `tile${ach.earned ? ' earned' : ''}${isPinned ? ' pinned' : ''}`;
-  tile.dataset.id = ach.id;
-
-  // Badge section
+  // Badge
   const badgeWrap = document.createElement('div');
   badgeWrap.className = 'tile-badge';
   const img = document.createElement('img');
-  img.src   = badgeSrc;
-  img.alt   = '';
-  img.className = locked ? 'locked' : '';
-  img.loading   = 'lazy';
-  img.onerror   = () => img.style.opacity = '0.2';
-  badgeWrap.appendChild(img);
-  if (ach.earned) {
+  img.src     = `${BADGE_BASE}/${a.badge}${a.earned ? '' : '_lock'}.png`;
+  img.loading = 'lazy';
+  img.alt     = '';
+  if (!a.earned) img.className = 'locked';
+  img.onerror = () => { img.style.opacity = '0.2'; };
+  if (a.earned) {
     const chk = document.createElement('div');
-    chk.className   = 'badge-earned';
-    chk.textContent = '✓';
+    chk.className = 'badge-earned'; chk.textContent = '✓';
     badgeWrap.appendChild(chk);
   }
-  tile.appendChild(badgeWrap);
+  badgeWrap.appendChild(img);
+  el.appendChild(badgeWrap);
 
-  // Content section
+  // Content
   const content = document.createElement('div');
   content.className = 'tile-content';
-
-  const header = document.createElement('div');
-  header.className = 'tile-header';
-  const nameEl = document.createElement('div');
-  nameEl.className   = 'tile-name';
-  nameEl.textContent = ach.title;
-  header.appendChild(nameEl);
-
-  if (display.showPoints !== false) {
+  const hdr = document.createElement('div');
+  hdr.className = 'tile-header';
+  const name = document.createElement('div');
+  name.className   = 'tile-name';
+  name.textContent = a.title;
+  hdr.appendChild(name);
+  if (d.showPoints) {
     const pts = document.createElement('div');
     pts.className   = 'tile-points';
-    pts.textContent = `${ach.points} pts`;
-    header.appendChild(pts);
+    pts.textContent = a.points + ' pts';
+    hdr.appendChild(pts);
   }
-  content.appendChild(header);
-
-  if (display.showDesc !== false) {
+  content.appendChild(hdr);
+  if (d.showDesc && a.description) {
     const desc = document.createElement('div');
     desc.className   = 'tile-desc';
-    desc.textContent = ach.description;
+    desc.textContent = a.description;
     content.appendChild(desc);
   }
-
-  // Progress bar
-  if (ach.maxProgress > 0 && !ach.earned) {
-    const wrap = document.createElement('div');
-    wrap.className = 'progress-wrap';
-    wrap.innerHTML = `
-      <div class="progress-bar">
-        <div class="progress-fill" style="width:${pct}%"></div>
-      </div>
-      <div class="progress-label">${ach.userProgress.toLocaleString()} / ${ach.maxProgress.toLocaleString()} (${pct}%)</div>
-    `;
-    content.appendChild(wrap);
+  if (a.maxProgress > 0 && !a.earned) {
+    const pct = Math.min(100, Math.round(100 * a.userProgress / a.maxProgress));
+    const pw = document.createElement('div');
+    pw.className = 'progress-wrap';
+    pw.innerHTML = `<div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div><div class="progress-label">${a.userProgress} / ${a.maxProgress}</div>`;
+    content.appendChild(pw);
   }
-
-  // Date earned
-  if (ach.earned && ach.dateEarned) {
+  if (a.earned && a.dateEarned) {
     const dt = document.createElement('div');
     dt.className   = 'tile-date';
-    dt.textContent = 'Earned ' + formatDate(ach.dateEarned);
+    dt.textContent = formatDate(a.dateEarned);
     content.appendChild(dt);
   }
+  el.appendChild(content);
 
-  tile.appendChild(content);
+  // Tiles mode expand hint
+  const hint = document.createElement('span');
+  hint.className = 'expand-hint'; hint.textContent = '⤢';
+  el.appendChild(hint);
 
-  // Dismiss button (×) — removes tile from overlay for this session
-  const dismissBtn = document.createElement('div');
-  dismissBtn.className   = 'dismiss-btn';
-  dismissBtn.textContent = '×';
-  dismissBtn.title       = 'Hide from overlay';
-  dismissBtn.addEventListener('click', e => {
-    e.stopPropagation();
-    const id = parseInt(tile.dataset.id);
-    dismissedTiles.add(id);
-    expandedTiles.delete(id);
-    tile.remove();
-  });
-  tile.appendChild(dismissBtn);
-
-  // In tiles mode: expand/collapse on click (chevron hints at interactivity)
-  const hint = document.createElement('div');
-  hint.className = 'expand-hint';
-  hint.textContent = '▼';
-  tile.appendChild(hint);
-
-  tile.addEventListener('click', () => {
-    if (isDragging) return;
-    const container = tile.closest('#ach-container');
-    if (!container || !container.classList.contains('mode-tiles')) return;
-    const id = parseInt(tile.dataset.id);
-    if (tile.classList.toggle('expanded')) {
-      expandedTiles.add(id);
-    } else {
-      expandedTiles.delete(id);
-    }
-  });
-
-  return tile;
-}
-
-// ── Styles ────────────────────────────────────────────────────────────────────
-
-function applyStyles(d) {
-  if (!d) return;
-  const r = document.documentElement.style;
-  const hexToRgb = h => {
-    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(h);
-    return m ? `${parseInt(m[1],16)},${parseInt(m[2],16)},${parseInt(m[3],16)}` : '13,13,13';
-  };
-  if (d.bgColor)     { r.setProperty('--bg-color', d.bgColor); r.setProperty('--bg-rgb', hexToRgb(d.bgColor)); }
-  if (d.bgOpacity !== undefined) r.setProperty('--bg-opacity', d.bgOpacity);
-  if (d.textColor)   r.setProperty('--text-color',   d.textColor);
-  if (d.accentColor) r.setProperty('--accent-color', d.accentColor);
-  if (d.goldColor)   r.setProperty('--gold-color',   d.goldColor);
-  if (d.fontSize)    r.setProperty('--font-size',    d.fontSize + 'px');
-  if (d.fontFamily)  r.setProperty('--font-family',  d.fontFamily);
-  if (d.badgeSize)   r.setProperty('--badge-size',   d.badgeSize + 'px');
-  if (d.tileGap)     r.setProperty('--tile-gap',     d.tileGap + 'px');
-  if (d.tileRadius)  r.setProperty('--tile-radius',  d.tileRadius + 'px');
-  if (d.panelWidth)  r.setProperty('--panel-width',  d.panelWidth + 'px');
-
-  // Dynamic bg on panel-header and tiles (respects opacity)
-  if (d.bgColor || d.bgOpacity !== undefined) {
-    const style = document.getElementById('dynStyle') || (() => {
-      const s = document.createElement('style');
-      s.id = 'dynStyle';
-      document.head.appendChild(s);
-      return s;
-    })();
-    const rgb = hexToRgb(d.bgColor || '#0d0d0d');
-    const op  = d.bgOpacity !== undefined ? d.bgOpacity : 0.88;
-    style.textContent = `
-      .tile { background: rgba(${rgb}, ${op}) !important; }
-      #panel-header { background: rgba(${rgb}, ${Math.min(op + 0.1, 1)}) !important; }
-    `;
+  // Tiles mode expand on click
+  if ((d.mode || 'both') === 'tiles') {
+    el.style.cursor = 'pointer';
+    el.onclick = function(e) {
+      if (e.target.classList.contains('dismiss-btn')) return;
+      el.classList.toggle('expanded');
+    };
   }
 
-  lastDisplay = { ...d };
+  return el;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-async function sendOrder(ids) {
-  try {
-    await fetch('/api/display', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ order: ids }),
-    });
-  } catch(e) {}
+function buildTextRow(a, d, pinned) {
+  const el = document.createElement('div');
+  el.className = 'tile-text' + (a.earned ? ' earned' : '') + (pinned.has(a.id) ? ' pinned' : '');
+  const img = document.createElement('img');
+  img.className = 'tile-text-badge' + (a.earned ? '' : ' locked');
+  img.src = `${BADGE_BASE}/${a.badge}${a.earned ? '' : '_lock'}.png`;
+  img.loading = 'lazy'; img.alt = '';
+  img.onerror = () => { img.style.opacity = '0.2'; };
+  const name = document.createElement('div');
+  name.className = 'tile-text-name'; name.textContent = a.title;
+  el.appendChild(img);
+  el.appendChild(name);
+  if (d.showPoints) {
+    const pts = document.createElement('div');
+    pts.className = 'tile-text-pts'; pts.textContent = a.points + 'p';
+    el.appendChild(pts);
+  }
+  return el;
 }
 
-function formatDate(s) {
-  if (!s) return '';
-  try {
-    const d = new Date(s.replace(' ', 'T') + 'Z');
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-  } catch(e) { return s.split(' ')[0]; }
+function updateTileSizeClass(tile) {
+  const w = tile.offsetWidth, h = tile.offsetHeight;
+  tile.classList.remove('sz-xs','sz-sm','sz-md','sz-lg','sz-xl');
+  if (w < 100) tile.classList.add('sz-xs');
+  else if (w < 160) tile.classList.add('sz-sm');
+  else if (h < 72)  tile.classList.add('sz-md');
+  else if (h < 110) tile.classList.add('sz-lg');
+  else tile.classList.add('sz-xl');
 }
 
-// ── Boot ──────────────────────────────────────────────────────────────────────
+function renderRecentPanel(d, achs) {
+  let rp = document.getElementById('recent-panel');
+  if (!d.recentEnabled) { if (rp) rp.style.display = 'none'; return; }
 
-poll();
+  if (!rp) {
+    rp = document.createElement('div');
+    rp.id = 'recent-panel';
+    document.body.appendChild(rp);
+  }
+  rp.style.display = '';
+  rp.className = d.recentPos || 'bottom-left';
+
+  const earned = achs.filter(a => a.earned && a.dateEarned)
+    .sort((a,b) => b.dateEarned.localeCompare(a.dateEarned))
+    .slice(0, d.recentCount || 3);
+
+  const ids = earned.map(a => a.id).join(',');
+  if (rp.dataset.ids === ids) return;
+  rp.dataset.ids = ids;
+  rp.innerHTML = '';
+  for (const a of earned) {
+    const el = document.createElement('div');
+    el.className = 'recent-tile';
+    el.innerHTML = `<img class="recent-badge" src="${BADGE_BASE}/${a.badge}.png" loading="lazy" alt="">
+      <div style="flex:1;min-width:0"><div class="recent-title">${escHtml(a.title)}</div><div class="recent-date">${formatDate(a.dateEarned)}</div></div>
+      <div class="recent-pts">${a.points} pts</div>`;
+    rp.appendChild(el);
+  }
+}
+
+// ── Widget rendering ──────────────────────────────────────────────────────────
+
+const PLATFORM_ICONS = {
+  twitch:    `<svg width="22" height="22" viewBox="0 0 24 24" fill="#9146FF"><path d="M4.265 0L1 3.265v17.47h5.88V24l3.265-3.265h4.899L21.735 12V0H4.265zm15.853 11.35l-3.918 3.918H11.3l-3.265 3.265v-3.265H3.53V1.633h16.588V11.35zM16.47 5.1h-1.633v4.899H16.47V5.1zm-4.898 0H9.939v4.899h1.633V5.1z"/></svg>`,
+  youtube:   `<svg width="22" height="22" viewBox="0 0 24 24" fill="#FF0000"><path d="M23.495 6.204a3.008 3.008 0 00-2.088-2.088C19.545 3.6 12 3.6 12 3.6s-7.527 0-9.407.516A3.008 3.008 0 00.505 6.204 31.247 31.247 0 000 12a31.247 31.247 0 00.505 5.796 3.008 3.008 0 002.088 2.088C4.473 20.4 12 20.4 12 20.4s7.527 0 9.407-.516a3.008 3.008 0 002.088-2.088A31.247 31.247 0 0024 12a31.247 31.247 0 00-.505-5.796zM9.609 15.601V8.408l6.264 3.602z"/></svg>`,
+  twitter:   `<svg width="22" height="22" viewBox="0 0 24 24" fill="#e6edf3"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.748l7.73-8.835L1.254 2.25H8.08l4.259 5.631 5.905-5.631zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>`,
+  discord:   `<svg width="22" height="22" viewBox="0 0 24 24" fill="#5865F2"><path d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03z"/></svg>`,
+  instagram: `<svg width="22" height="22" viewBox="0 0 24 24"><defs><linearGradient id="ig" x1="0%" y1="100%" x2="100%" y2="0%"><stop offset="0%" stop-color="#f09433"/><stop offset="50%" stop-color="#dc2743"/><stop offset="100%" stop-color="#bc1888"/></linearGradient></defs><path fill="url(#ig)" d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>`,
+  tiktok:    `<svg width="22" height="22" viewBox="0 0 24 24" fill="#e6edf3"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.78 1.52V6.77a4.85 4.85 0 01-1.01-.08z"/></svg>`,
+};
+
+function placeWidget(widget) {
+  const canvas = document.getElementById('canvas');
+  document.getElementById('w-' + widget.id)?.remove();
+
+  const el = document.createElement('div');
+  el.id        = 'w-' + widget.id;
+  el.className = 'widget' + (widget.locked ? ' locked' : '');
+  el.style.cssText = `left:${widget.x}px;top:${widget.y}px;width:${widget.w}px;height:${widget.h}px;z-index:${widget.zIndex||1}`;
+
+  switch (widget.type) {
+    case 'death_counter':  el.appendChild(buildDeathCounter(widget)); break;
+    case 'timer':          el.appendChild(buildTimer(widget));        break;
+    case 'countdown':      el.appendChild(buildCountdown(widget));    break;
+    case 'social':         el.appendChild(buildSocial(widget));       break;
+    case 'scrolling_text': el.appendChild(buildScrollText(widget));   break;
+    case 'image':          el.appendChild(buildImage(widget));        break;
+  }
+
+  if (!widget.locked) makeDraggable(el, '/api/widgets/' + widget.id + '/position');
+  canvas.appendChild(el);
+}
+
+function patchWidget(widget) {
+  const el = document.getElementById('w-' + widget.id);
+  if (!el) { if (widget.visible) placeWidget(widget); return; }
+  if (!widget.visible) { el.style.display = 'none'; return; }
+  el.style.display  = '';
+  el.style.left     = widget.x + 'px';
+  el.style.top      = widget.y + 'px';
+  el.style.width    = widget.w + 'px';
+  el.style.height   = widget.h + 'px';
+  el.style.zIndex   = widget.zIndex || 1;
+  // Update counter value without full rebuild
+  const valEl = el.querySelector('[data-wval]');
+  if (valEl) {
+    if (widget.type === 'death_counter') valEl.textContent = widget.config.count ?? 0;
+  }
+}
+
+function wBox(c) {
+  const div = document.createElement('div');
+  div.className = 'w-box';
+  const [r,g,b] = hexToRgb(c.bgColor || '#0d0d0d');
+  div.style.setProperty('--w-bg-rgb', `${r},${g},${b}`);
+  div.style.setProperty('--w-bg-opacity', c.bgOpacity ?? 0.85);
+  div.style.setProperty('--w-color', c.color || '#e6edf3');
+  return div;
+}
+
+function buildDeathCounter(w) {
+  const c = w.config, box = wBox(c);
+  if (c.showLabel) { const l = document.createElement('div'); l.className = 'w-label'; l.textContent = c.label || 'Deaths'; l.dataset.nodrag = '1'; box.appendChild(l); }
+  const v = document.createElement('div');
+  v.className = 'w-value'; v.dataset.wval = '1';
+  v.style.fontSize = (c.fontSize || 36) + 'px';
+  v.textContent = c.count ?? 0;
+  box.appendChild(v);
+  return box;
+}
+
+function buildTimer(w) {
+  const c = w.config, box = wBox(c);
+  if (c.showLabel) { const l = document.createElement('div'); l.className = 'w-label'; l.textContent = c.label || 'Timer'; box.appendChild(l); }
+  const v = document.createElement('div');
+  v.className = 'w-value'; v.dataset.timerId = w.id; v.dataset.timerType = 'up';
+  v.style.fontSize = (c.fontSize || 36) + 'px';
+  v.textContent = formatMs(c.pausedElapsed || 0);
+  box.appendChild(v);
+  return box;
+}
+
+function buildCountdown(w) {
+  const c = w.config, box = wBox(c);
+  if (c.showLabel) { const l = document.createElement('div'); l.className = 'w-label'; l.textContent = c.label || 'Countdown'; box.appendChild(l); }
+  const v = document.createElement('div');
+  v.className = 'w-value'; v.dataset.timerId = w.id; v.dataset.timerType = 'down';
+  v.style.fontSize = (c.fontSize || 36) + 'px';
+  v.textContent = formatMs(Math.max(0, (c.totalMs || 0) - (c.pausedElapsed || 0)));
+  box.appendChild(v);
+  return box;
+}
+
+function buildSocial(w) {
+  const c = w.config;
+  const outer = document.createElement('div');
+  outer.className = 'w-social';
+  const [r,g,b] = hexToRgb(c.bgColor || '#0d0d0d');
+  outer.style.setProperty('--w-bg-rgb', `${r},${g},${b}`);
+  outer.style.setProperty('--w-bg-opacity', c.bgOpacity ?? 0.85);
+  outer.style.setProperty('--w-color', c.color || '#e6edf3');
+  if (c.showIcon && PLATFORM_ICONS[c.platform]) {
+    const icon = document.createElement('div');
+    icon.className = 'w-social-icon'; icon.innerHTML = PLATFORM_ICONS[c.platform];
+    outer.appendChild(icon);
+  }
+  const text = document.createElement('div');
+  text.className = 'w-social-text';
+  text.style.fontSize = (c.fontSize || 18) + 'px';
+  const h = (c.handle || '').replace(/^@/, '');
+  const prefixes = { twitch:'twitch.tv/', youtube:'@', twitter:'@', instagram:'@', tiktok:'@', discord:'', default:'' };
+  text.textContent = (prefixes[c.platform] ?? '') + h;
+  outer.appendChild(text);
+  return outer;
+}
+
+function buildScrollText(w) {
+  const c = w.config;
+  const outer = document.createElement('div');
+  outer.className = 'w-scroll-outer';
+  const [r,g,b] = hexToRgb(c.bgColor || '#0d0d0d');
+  outer.style.setProperty('--w-bg-rgb', `${r},${g},${b}`);
+  outer.style.setProperty('--w-bg-opacity', c.bgOpacity ?? 0);
+  const dur = Math.max(3, Math.round(600 / (c.speed || 60))) + 's';
+  outer.style.setProperty('--scroll-dur', dur);
+  const inner = document.createElement('span');
+  inner.className = 'w-scroll-inner';
+  inner.style.fontSize = (c.fontSize || 22) + 'px';
+  inner.style.color = c.color || '#e6edf3';
+  inner.textContent = c.text || '';
+  if (c.direction === 'right') inner.style.animationDirection = 'reverse';
+  outer.appendChild(inner);
+  return outer;
+}
+
+function buildImage(w) {
+  const c = w.config;
+  const outer = document.createElement('div');
+  outer.className = 'w-image';
+  outer.style.opacity = c.opacity ?? 1;
+  if (c.src) {
+    const img = document.createElement('img');
+    img.src = c.src; img.alt = '';
+    img.style.objectFit = c.objectFit || 'contain';
+    outer.appendChild(img);
+  }
+  return outer;
+}
+
+// ── Drag ──────────────────────────────────────────────────────────────────────
+
+function makeDraggable(el, endpoint, onUpdate) {
+  el.addEventListener('mousedown', e => {
+    if (e.target.closest('[data-nodrag]')) return;
+    e.preventDefault();
+    const rect = el.getBoundingClientRect();
+    const ox = e.clientX - rect.left, oy = e.clientY - rect.top;
+    el.style.cursor = 'grabbing';
+    document.body.style.userSelect = 'none';
+
+    function onMove(e) {
+      const pr = el.parentElement.getBoundingClientRect();
+      el.style.left = Math.max(0, e.clientX - pr.left - ox) + 'px';
+      el.style.top  = Math.max(0, e.clientY - pr.top  - oy) + 'px';
+    }
+    function onUp() {
+      document.removeEventListener('mousemove', onMove);
+      el.style.cursor = ''; document.body.style.userSelect = '';
+      const x = Math.round(parseFloat(el.style.left) || 0);
+      const y = Math.round(parseFloat(el.style.top)  || 0);
+      if (onUpdate) onUpdate(x, y);
+      fetch(endpoint, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({x,y}) }).catch(()=>{});
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp, { once: true });
+  });
+}
+
+// ── Timer RAF loop ────────────────────────────────────────────────────────────
+
+function timerLoop() {
+  const now = Date.now();
+  document.querySelectorAll('[data-timer-id]').forEach(el => {
+    const id = el.dataset.timerId;
+    const widget = state.widgets.find(w => w.id === id);
+    if (!widget) return;
+    const c = widget.config;
+    const elapsed = c.running ? (now - c.startedAt) + (c.pausedElapsed || 0) : (c.pausedElapsed || 0);
+    el.textContent = el.dataset.timerType === 'up'
+      ? formatMs(elapsed)
+      : formatMs(Math.max(0, (c.totalMs || 0) - elapsed));
+  });
+  requestAnimationFrame(timerLoop);
+}
+
+function formatMs(ms) {
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return h > 0 ? `${h}:${p2(m)}:${p2(sec)}` : `${p2(m)}:${p2(sec)}`;
+}
+function p2(n) { return String(n).padStart(2,'0'); }
+
+// ── Fallback RA poll (WebSocket preferred) ────────────────────────────────────
+
+setInterval(() => {
+  if (ws && ws.readyState === 1) return;
+  fetch('/api/state').then(r => r.json()).then(d => {
+    if (d.achievements) state.achievements = d.achievements;
+    if (d.gameInfo)     state.gameInfo     = d.gameInfo;
+    if (d.display)      Object.assign(state.display, d.display);
+    if (d.widgets)      state.widgets      = d.widgets;
+    renderAll();
+    document.getElementById('ticker').textContent = 'Updated ' + new Date().toLocaleTimeString();
+  }).catch(() => {});
+}, 30_000);
+
+// ── Utility ────────────────────────────────────────────────────────────────────
+
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function formatDate(s) { try { return new Date(s + 'Z').toLocaleString(undefined, {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); } catch { return s; } }
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+connectWS();
+requestAnimationFrame(timerLoop);
 </script>
 </body>
 </html>

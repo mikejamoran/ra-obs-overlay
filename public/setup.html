@@ -241,6 +241,32 @@ input[type=color] {
 .banner.info    { background: rgba(31,111,235,0.12); border: 1px solid var(--accent); color: var(--accent2); }
 .hidden { display: none; }
 
+/* ── Layer panel ─────────────────────────────────────────────────────────── */
+.layer-row {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 10px;
+}
+.layer-handle { color: var(--muted); cursor: grab; font-size: 16px; flex-shrink: 0; }
+.layer-icon   { font-size: 16px; flex-shrink: 0; }
+.layer-label  { flex: 1; font-size: 13px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.layer-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.layer-btn { background: none; border: 1px solid transparent; border-radius: 5px; padding: 3px 6px; cursor: pointer; font-size: 13px; color: var(--muted); transition: border-color 0.15s, color 0.15s; }
+.layer-btn:hover { border-color: var(--border); color: var(--text); }
+.layer-btn.active { color: var(--accent); border-color: var(--accent); }
+.layer-btn.danger:hover { color: var(--error); border-color: var(--error); }
+.layer-settings {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+  padding: 14px; margin-top: 2px; display: none;
+}
+.layer-settings.open { display: block; }
+
+/* Upload grid */
+.upload-thumb { position: relative; width: 80px; height: 80px; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); background: var(--panel); }
+.upload-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.upload-thumb-del { position: absolute; top: 2px; right: 2px; background: rgba(0,0,0,0.7); border: none; border-radius: 3px; color: var(--error); font-size: 12px; cursor: pointer; padding: 1px 4px; line-height: 1.4; }
+.upload-thumb-name { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.65); font-size: 9px; color: #fff; padding: 2px 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* Divider */
 .divider { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
 
@@ -294,6 +320,13 @@ input[type=color] {
       3. Set width/height to your canvas (e.g. 1920×1080)<br>
       4. Check <strong style="color:var(--text)">Allow Transparency</strong>
     </div>
+  </div>
+
+  <div class="sb-section">
+    <label>Widgets &amp; Layers</label>
+    <a href="#card-widgets" class="btn btn-sm" style="display:block;width:100%;text-align:center;margin-bottom:6px">⚙ Manage Widgets</a>
+    <a href="/control" target="_blank" class="btn btn-sm" style="display:block;width:100%;text-align:center;margin-bottom:6px">🎮 Control Panel ↗</a>
+    <a href="#card-twitch" class="btn btn-sm" style="display:block;width:100%;text-align:center">🟣 Twitch Chat</a>
   </div>
 
   <div class="sb-bottom">
@@ -556,6 +589,103 @@ input[type=color] {
     </div>
   </div>
 
+  <!-- ── Widgets & Layers ──────────────────────────────────────────────────── -->
+  <div class="card" id="card-widgets">
+    <div class="card-header">
+      <h2>7 · Widgets &amp; Layers</h2>
+      <span class="tag" id="widgetsTag">0 widgets</span>
+    </div>
+    <div class="card-body">
+
+      <!-- Add widget -->
+      <div style="margin-bottom:16px">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em">Add Widget</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px" id="addWidgetBtns">
+          <button class="btn btn-sm" onclick="addWidget('death_counter')">💀 Death Counter</button>
+          <button class="btn btn-sm" onclick="addWidget('timer')">⏱ Timer</button>
+          <button class="btn btn-sm" onclick="addWidget('countdown')">⏳ Countdown</button>
+          <button class="btn btn-sm" onclick="addWidget('social')">📡 Social</button>
+          <button class="btn btn-sm" onclick="addWidget('scrolling_text')">📜 Scrolling Text</button>
+          <button class="btn btn-sm" onclick="addWidget('image')">🖼 Image / GIF</button>
+        </div>
+      </div>
+
+      <!-- Layer list -->
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em">Layers</div>
+      <div id="layerList" style="display:flex;flex-direction:column;gap:4px">
+        <!-- Achievement panel (always first) -->
+        <div class="layer-row" id="layer-ach">
+          <span class="layer-handle">⠿</span>
+          <span class="layer-icon">🏆</span>
+          <span class="layer-label">Achievement Panel</span>
+          <div class="layer-actions">
+            <button class="layer-btn" title="Toggle visibility" onclick="toggleAchVisible(this)" id="ach-vis-btn">👁</button>
+            <button class="layer-btn" title="Toggle lock"       onclick="toggleAchLock(this)"    id="ach-lock-btn">🔓</button>
+            <button class="layer-btn layer-edit-btn" title="Settings" onclick="toggleLayerSettings('ach-settings')">⚙</button>
+          </div>
+        </div>
+        <div class="layer-settings" id="ach-settings">
+          <div style="font-size:12px;color:var(--muted)">Achievement panel display settings are managed in cards 3–6 above.<br>Drag the panel in OBS Interact mode to reposition it.</div>
+          <div class="field-row" style="margin-top:10px">
+            <div class="field">
+              <label>Panel height (px)</label>
+              <input type="number" min="100" max="1080" value="600" id="panelHInput" oninput="setDisplay('panelH', parseInt(this.value)||600)">
+            </div>
+            <div class="field">
+              <label>Z-index</label>
+              <input type="number" min="1" max="999" value="10" id="panelZInput" oninput="setDisplay('panelZIndex', parseInt(this.value)||10)">
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Dynamic widget layers injected here by JS -->
+      <div id="widgetLayers"></div>
+
+      <!-- Uploads manager -->
+      <div style="margin-top:24px">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em">Uploaded Files</div>
+        <div id="uploadGrid" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px"></div>
+        <label class="btn btn-sm" style="cursor:pointer">
+          + Upload Image / GIF
+          <input type="file" accept=".png,.jpg,.jpeg,.gif,.webp,.svg" style="display:none" onchange="uploadFile(this)">
+        </label>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Twitch Chat ─────────────────────────────────────────────────────────── -->
+  <div class="card" id="card-twitch">
+    <div class="card-header">
+      <h2>8 · Twitch Chat Commands</h2>
+      <span class="tag" id="twitchTag">Not connected</span>
+    </div>
+    <div class="card-body">
+      <div id="twitchError" class="banner error hidden"></div>
+      <div class="field-row">
+        <div class="field">
+          <label>Channel name</label>
+          <input type="text" id="twitchChannel" placeholder="yourchannelname">
+        </div>
+        <div class="field">
+          <label>OAuth token <a href="https://twitchapps.com/tmi/" target="_blank" style="font-size:11px;margin-left:4px">Get token ↗</a></label>
+          <input type="password" id="twitchToken" placeholder="oauth:xxxxxxxxxxxxxxxx">
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:12px;align-items:center">
+        <button class="btn btn-primary" id="twitchConnectBtn" onclick="twitchConnect()">Connect</button>
+        <button class="btn" id="twitchDisconnectBtn" onclick="twitchDisconnect()" style="display:none">Disconnect</button>
+        <span id="twitchStatus" style="font-size:13px;color:var(--muted)">Not connected</span>
+      </div>
+      <div style="margin-top:16px;font-size:12px;color:var(--muted);line-height:1.7">
+        <strong style="color:var(--text)">How it works:</strong><br>
+        Each Death Counter widget has its own chat command (default <code>!death</code>).<br>
+        Viewers can type <code>!death++</code> / <code>!death--</code> / <code>!death reset</code> in chat.<br>
+        Permission level is configurable per widget in the Widgets section above.
+      </div>
+    </div>
+  </div>
+
 </main>
 </div>
 
@@ -592,6 +722,7 @@ async function init() {
     if (cfg.gameId && cfg.connected) {
       await loadAchievements();
     }
+    await initExtended(cfg);
   } catch(e) { /* first run */ }
 }
 
@@ -887,7 +1018,384 @@ async function api(path, method='GET', body) {
   return res.json();
 }
 
+// ── Widgets ───────────────────────────────────────────────────────────────────
+
+let widgetList = [];
+
+const WIDGET_ICONS = {
+  death_counter: '💀', timer: '⏱', countdown: '⏳',
+  social: '📡', scrolling_text: '📜', image: '🖼',
+};
+const PLATFORM_NAMES = { twitch:'Twitch', youtube:'YouTube', twitter:'X / Twitter', discord:'Discord', instagram:'Instagram', tiktok:'TikTok' };
+const PERMISSION_NAMES = { broadcaster:'Broadcaster only', mods:'Broadcaster + Mods', subscribers:'Subscribers+', followers:'Followers+', everyone:'Everyone', custom:'Custom list' };
+
+async function loadWidgets() {
+  try {
+    const { widgets } = await api('/api/widgets');
+    widgetList = widgets || [];
+    renderWidgetLayers();
+    document.getElementById('widgetsTag').textContent = widgetList.length + ' widget' + (widgetList.length !== 1 ? 's' : '');
+  } catch {}
+}
+
+async function addWidget(type) {
+  try {
+    const { widget } = await api('/api/widgets', 'POST', { type, x: 100, y: 100 });
+    widgetList.push(widget);
+    renderWidgetLayers();
+    document.getElementById('widgetsTag').textContent = widgetList.length + ' widgets';
+    // Auto-open settings
+    toggleLayerSettings('ws-' + widget.id);
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function deleteWidget(id) {
+  if (!confirm('Delete this widget?')) return;
+  await api('/api/widgets/' + id, 'DELETE');
+  widgetList = widgetList.filter(w => w.id !== id);
+  renderWidgetLayers();
+  document.getElementById('widgetsTag').textContent = widgetList.length + ' widgets';
+}
+
+async function updateWidget(id, patch) {
+  const w = widgetList.find(w => w.id === id);
+  if (!w) return;
+  Object.assign(w, patch);
+  await api('/api/widgets/' + id, 'PUT', patch);
+}
+
+async function updateWidgetConfig(id, configPatch) {
+  const w = widgetList.find(w => w.id === id);
+  if (!w) return;
+  Object.assign(w.config, configPatch);
+  await api('/api/widgets/' + id, 'PUT', { config: configPatch });
+}
+
+function renderWidgetLayers() {
+  const container = document.getElementById('widgetLayers');
+  container.innerHTML = '';
+  for (const w of widgetList) {
+    container.appendChild(buildLayerRow(w));
+  }
+}
+
+function buildLayerRow(w) {
+  const wrap = document.createElement('div');
+  wrap.dataset.wid = w.id;
+
+  const row = document.createElement('div');
+  row.className = 'layer-row';
+  row.innerHTML = `
+    <span class="layer-handle">⠿</span>
+    <span class="layer-icon">${WIDGET_ICONS[w.type] || '▪'}</span>
+    <span class="layer-label">${escHtml(w.label)}</span>
+    <div class="layer-actions">
+      <button class="layer-btn ${w.visible ? 'active' : ''}" title="Toggle visibility"
+        onclick="toggleWidgetProp('${w.id}','visible',this)">👁</button>
+      <button class="layer-btn ${w.locked ? 'active' : ''}" title="Toggle lock"
+        onclick="toggleWidgetProp('${w.id}','locked',this)">🔒</button>
+      <button class="layer-btn layer-edit-btn" title="Settings"
+        onclick="toggleLayerSettings('ws-${w.id}')">⚙</button>
+      <button class="layer-btn danger" title="Delete"
+        onclick="deleteWidget('${w.id}')">🗑</button>
+    </div>`;
+  wrap.appendChild(row);
+
+  const settings = document.createElement('div');
+  settings.className = 'layer-settings';
+  settings.id = 'ws-' + w.id;
+  settings.appendChild(buildWidgetSettings(w));
+  wrap.appendChild(settings);
+
+  return wrap;
+}
+
+function buildWidgetSettings(w) {
+  const c = w.config;
+  const frag = document.createDocumentFragment();
+
+  // Label rename
+  const labelRow = document.createElement('div');
+  labelRow.className = 'field-row';
+  labelRow.style.marginBottom = '12px';
+  labelRow.innerHTML = `<div class="field"><label>Widget Label</label>
+    <input type="text" value="${escHtml(w.label)}" oninput="updateWidget('${w.id}',{label:this.value})"></div>`;
+  frag.appendChild(labelRow);
+
+  if (w.type === 'death_counter') {
+    const el = document.createElement('div');
+    el.innerHTML = `
+      <div class="field-row">
+        <div class="field"><label>Display Label</label>
+          <input type="text" value="${escHtml(c.label||'Deaths')}" oninput="updateWidgetConfig('${w.id}',{label:this.value})"></div>
+        <div class="field"><label>Count</label>
+          <input type="number" value="${c.count||0}" oninput="updateWidgetConfig('${w.id}',{count:parseInt(this.value)||0})"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Increment step</label>
+          <input type="number" min="1" value="${c.step||1}" oninput="updateWidgetConfig('${w.id}',{step:parseInt(this.value)||1})"></div>
+        <div class="field"><label>Chat command</label>
+          <input type="text" value="${escHtml(c.chatCommand||'!death')}" oninput="updateWidgetConfig('${w.id}',{chatCommand:this.value})"></div>
+      </div>
+      <div class="field" style="margin-bottom:8px"><label>Chat permission</label>
+        <select onchange="updateWidgetConfig('${w.id}',{chatPermission:this.value})" style="width:100%;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text)">
+          ${Object.entries(PERMISSION_NAMES).map(([v,l])=>`<option value="${v}"${c.chatPermission===v?' selected':''}>${l}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field" id="customUsersRow-${w.id}" style="${c.chatPermission==='custom'?'':'display:none'}">
+        <label>Allowed usernames (comma-separated)</label>
+        <input type="text" value="${escHtml(c.chatAllowedUsers||'')}" oninput="updateWidgetConfig('${w.id}',{chatAllowedUsers:this.value})">
+      </div>`;
+    // Show/hide custom users based on permission select
+    const select = el.querySelector('select');
+    if (select) select.addEventListener('change', () => {
+      const row = document.getElementById('customUsersRow-' + w.id);
+      if (row) row.style.display = select.value === 'custom' ? '' : 'none';
+    });
+    frag.appendChild(el);
+  }
+
+  if (w.type === 'timer' || w.type === 'countdown') {
+    const el = document.createElement('div');
+    let cdExtra = '';
+    if (w.type === 'countdown') {
+      const totalMin = Math.floor((c.totalMs||0)/60000);
+      const totalSec = Math.floor(((c.totalMs||0)%60000)/1000);
+      cdExtra = `<div class="field-row"><div class="field"><label>Duration (mm:ss)</label>
+        <input type="text" value="${totalMin}:${String(totalSec).padStart(2,'0')}"
+          onchange="setCountdownDuration('${w.id}',this.value)"></div></div>`;
+    }
+    el.innerHTML = `
+      <div class="field-row">
+        <div class="field"><label>Display Label</label>
+          <input type="text" value="${escHtml(c.label||w.type)}" oninput="updateWidgetConfig('${w.id}',{label:this.value})"></div>
+        <div class="field"><label>Font size</label>
+          <input type="number" min="12" max="120" value="${c.fontSize||36}" oninput="updateWidgetConfig('${w.id}',{fontSize:parseInt(this.value)||36})"></div>
+      </div>
+      ${cdExtra}
+      <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap">
+        <button class="btn btn-sm" onclick="widgetAction('${w.id}','start')">▶ Start</button>
+        <button class="btn btn-sm" onclick="widgetAction('${w.id}','pause')">⏸ Pause</button>
+        <button class="btn btn-sm" onclick="widgetAction('${w.id}','reset')">↺ Reset</button>
+      </div>`;
+    frag.appendChild(el);
+  }
+
+  if (w.type === 'social') {
+    const el = document.createElement('div');
+    el.innerHTML = `
+      <div class="field-row">
+        <div class="field"><label>Platform</label>
+          <select onchange="updateWidgetConfig('${w.id}',{platform:this.value})" style="width:100%;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text)">
+            ${Object.entries(PLATFORM_NAMES).map(([v,l])=>`<option value="${v}"${c.platform===v?' selected':''}>${l}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"><label>Handle / Username</label>
+          <input type="text" value="${escHtml(c.handle||'')}" placeholder="username (no @)" oninput="updateWidgetConfig('${w.id}',{handle:this.value})"></div>
+      </div>`;
+    frag.appendChild(el);
+  }
+
+  if (w.type === 'scrolling_text') {
+    const el = document.createElement('div');
+    el.innerHTML = `
+      <div class="field"><label>Text</label>
+        <input type="text" value="${escHtml(c.text||'')}" oninput="updateWidgetConfig('${w.id}',{text:this.value})"></div>
+      <div class="field-row" style="margin-top:8px">
+        <div class="field"><label>Font size</label>
+          <input type="number" min="10" max="120" value="${c.fontSize||22}" oninput="updateWidgetConfig('${w.id}',{fontSize:parseInt(this.value)||22})"></div>
+        <div class="field"><label>Speed (px/s)</label>
+          <input type="number" min="10" max="500" value="${c.speed||60}" oninput="updateWidgetConfig('${w.id}',{speed:parseInt(this.value)||60})"></div>
+      </div>`;
+    frag.appendChild(el);
+  }
+
+  if (w.type === 'image') {
+    const el = document.createElement('div');
+    el.innerHTML = `
+      <div class="field"><label>Image source (upload below and paste URL, or use /uploads/filename)</label>
+        <input type="text" value="${escHtml(c.src||'')}" placeholder="/uploads/yourfile.png" oninput="updateWidgetConfig('${w.id}',{src:this.value})"></div>
+      <div class="field-row" style="margin-top:8px">
+        <div class="field"><label>Opacity (0–1)</label>
+          <input type="number" min="0" max="1" step="0.05" value="${c.opacity??1}" oninput="updateWidgetConfig('${w.id}',{opacity:parseFloat(this.value)||1})"></div>
+        <div class="field"><label>Object fit</label>
+          <select onchange="updateWidgetConfig('${w.id}',{objectFit:this.value})" style="width:100%;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text)">
+            <option value="contain"${c.objectFit==='contain'?' selected':''}>Contain</option>
+            <option value="cover"${c.objectFit==='cover'?' selected':''}>Cover</option>
+            <option value="fill"${c.objectFit==='fill'?' selected':''}>Fill</option>
+          </select>
+        </div>
+      </div>`;
+    frag.appendChild(el);
+  }
+
+  // Shared styling for box-type widgets
+  if (['death_counter','timer','countdown','social'].includes(w.type)) {
+    const el = document.createElement('div');
+    el.style.marginTop = '12px';
+    el.innerHTML = `
+      <div class="field-row">
+        <div class="field"><label>Text color</label>
+          <input type="color" value="${c.color||'#e6edf3'}" oninput="updateWidgetConfig('${w.id}',{color:this.value})"></div>
+        <div class="field"><label>Background</label>
+          <input type="color" value="${c.bgColor||'#0d0d0d'}" oninput="updateWidgetConfig('${w.id}',{bgColor:this.value})"></div>
+        <div class="field"><label>BG opacity</label>
+          <input type="number" min="0" max="1" step="0.05" value="${c.bgOpacity??0.85}" oninput="updateWidgetConfig('${w.id}',{bgOpacity:parseFloat(this.value)})"></div>
+      </div>`;
+    frag.appendChild(el);
+  }
+
+  // Size inputs
+  const sizeEl = document.createElement('div');
+  sizeEl.style.marginTop = '12px';
+  sizeEl.innerHTML = `
+    <div class="field-row">
+      <div class="field"><label>Width (px)</label>
+        <input type="number" min="50" value="${w.w}" oninput="updateWidget('${w.id}',{w:parseInt(this.value)||100})"></div>
+      <div class="field"><label>Height (px)</label>
+        <input type="number" min="30" value="${w.h}" oninput="updateWidget('${w.id}',{h:parseInt(this.value)||60})"></div>
+      <div class="field"><label>Z-index</label>
+        <input type="number" min="1" value="${w.zIndex||1}" oninput="updateWidget('${w.id}',{zIndex:parseInt(this.value)||1})"></div>
+    </div>`;
+  frag.appendChild(sizeEl);
+
+  return frag;
+}
+
+function setCountdownDuration(id, val) {
+  let ms = 0;
+  if (val.includes(':')) {
+    const parts = val.split(':');
+    ms = (parseInt(parts[0])||0) * 60000 + (parseInt(parts[1])||0) * 1000;
+  } else {
+    ms = (parseInt(val)||0) * 60000;
+  }
+  updateWidgetConfig(id, { totalMs: ms });
+}
+
+async function widgetAction(id, action, value) {
+  await api('/api/widgets/' + id + '/action', 'POST', { action, value });
+}
+
+function toggleWidgetProp(id, prop, btn) {
+  const w = widgetList.find(w => w.id === id);
+  if (!w) return;
+  const newVal = !w[prop];
+  w[prop] = newVal;
+  btn.classList.toggle('active', newVal);
+  api('/api/widgets/' + id, 'PUT', { [prop]: newVal });
+}
+
+function toggleLayerSettings(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.toggle('open');
+}
+
+function toggleAchVisible(btn) {
+  const cur = display.panelVisible !== false;
+  const next = !cur;
+  btn.classList.toggle('active', next);
+  setDisplay('panelVisible', next);
+}
+
+function toggleAchLock(btn) {
+  const cur = !!display.panelLocked;
+  const next = !cur;
+  btn.classList.toggle('active', next);
+  btn.textContent = next ? '🔒' : '🔓';
+  setDisplay('panelLocked', next);
+}
+
+// ── Uploads ───────────────────────────────────────────────────────────────────
+
+async function loadUploads() {
+  try {
+    const { files } = await api('/api/uploads');
+    renderUploadGrid(files || []);
+  } catch {}
+}
+
+function renderUploadGrid(files) {
+  const grid = document.getElementById('uploadGrid');
+  grid.innerHTML = '';
+  for (const f of files) {
+    const thumb = document.createElement('div');
+    thumb.className = 'upload-thumb';
+    thumb.title = f.filename;
+    thumb.innerHTML = `<img src="${escHtml(f.src)}" loading="lazy" alt="">
+      <div class="upload-thumb-name">${escHtml(f.filename)}</div>
+      <button class="upload-thumb-del" onclick="deleteUpload('${escHtml(f.filename)}',this.closest('.upload-thumb'))">×</button>`;
+    grid.appendChild(thumb);
+  }
+}
+
+async function uploadFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await fetch('/api/upload', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.ok) { input.value = ''; loadUploads(); }
+    else alert('Upload failed: ' + data.error);
+  } catch(e) { alert('Upload error: ' + e.message); }
+}
+
+async function deleteUpload(filename, thumbEl) {
+  if (!confirm('Delete ' + filename + '?')) return;
+  await api('/api/uploads/' + filename, 'DELETE');
+  thumbEl?.remove();
+}
+
+// ── Twitch ────────────────────────────────────────────────────────────────────
+
+async function twitchConnect() {
+  const channel = document.getElementById('twitchChannel').value.trim();
+  const token   = document.getElementById('twitchToken').value.trim();
+  if (!channel || !token) { alert('Enter channel name and token.'); return; }
+  document.getElementById('twitchError').classList.add('hidden');
+  try {
+    const res = await api('/api/twitch/connect', 'POST', { channel, token });
+    if (res.ok) setTwitchConnected(true, channel);
+    else { document.getElementById('twitchError').textContent = res.error; document.getElementById('twitchError').classList.remove('hidden'); }
+  } catch(e) { document.getElementById('twitchError').textContent = e.message; document.getElementById('twitchError').classList.remove('hidden'); }
+}
+
+async function twitchDisconnect() {
+  await api('/api/twitch/disconnect', 'POST');
+  setTwitchConnected(false);
+}
+
+function setTwitchConnected(connected, channel) {
+  document.getElementById('twitchConnectBtn').style.display    = connected ? 'none' : '';
+  document.getElementById('twitchDisconnectBtn').style.display = connected ? '' : 'none';
+  document.getElementById('twitchStatus').textContent = connected ? `Connected to #${channel}` : 'Not connected';
+  document.getElementById('twitchTag').textContent    = connected ? '🟢 Connected' : 'Not connected';
+  document.getElementById('twitchTag').className      = 'tag' + (connected ? ' green' : '');
+}
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
+
+async function initExtended(cfg) {
+  // Twitch status
+  if (cfg.twitch?.connected) {
+    document.getElementById('twitchChannel').value = cfg.twitch.channel || '';
+    setTwitchConnected(true, cfg.twitch.channel);
+  }
+  // Achievement panel controls
+  const visBtn  = document.getElementById('ach-vis-btn');
+  const lockBtn = document.getElementById('ach-lock-btn');
+  if (cfg.display?.panelVisible === false) visBtn?.classList.remove('active');
+  else visBtn?.classList.add('active');
+  if (cfg.display?.panelLocked) { lockBtn?.classList.add('active'); if(lockBtn) lockBtn.textContent='🔒'; }
+  document.getElementById('panelHInput').value = cfg.display?.panelH || 600;
+  document.getElementById('panelZInput').value = cfg.display?.panelZIndex || 10;
+
+  await loadWidgets();
+  await loadUploads();
+}
 
 init();
 </script>

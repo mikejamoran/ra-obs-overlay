@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stream Control Panel</title>
+<style>
+:root {
+  --bg:      #0d1117;
+  --surface: #161b22;
+  --panel:   #21262d;
+  --border:  #30363d;
+  --accent:  #1f6feb;
+  --text:    #e6edf3;
+  --muted:   #8b949e;
+  --success: #3fb950;
+  --error:   #f85149;
+  --gold:    #e3b341;
+  --r:       10px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 15px; }
+
+.header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 20px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.header h1 { font-size: 16px; font-weight: 700; }
+.header .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.ws-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--error); flex-shrink: 0; }
+.ws-dot.ok { background: var(--success); box-shadow: 0 0 6px var(--success); }
+
+.content { padding: 16px; max-width: 600px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; }
+.card-header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+.card-icon { font-size: 18px; }
+.card-title { font-size: 14px; font-weight: 700; }
+.card-label { font-size: 12px; color: var(--muted); margin-left: auto; }
+.card-body { padding: 16px; }
+
+/* Death counter */
+.counter-display { font-size: 72px; font-weight: 900; text-align: center; line-height: 1; margin-bottom: 16px; font-variant-numeric: tabular-nums; }
+.counter-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.counter-btns .reset-row { grid-column: 1 / -1; }
+.big-btn {
+  padding: 18px; border: none; border-radius: 8px; cursor: pointer;
+  font-size: 28px; font-weight: 700; color: #fff; transition: filter 0.15s, transform 0.1s;
+  touch-action: manipulation;
+}
+.big-btn:active { transform: scale(0.96); filter: brightness(0.85); }
+.btn-minus { background: #da3633; }
+.btn-plus  { background: #238636; }
+.btn-reset { background: var(--panel); border: 1px solid var(--border); color: var(--muted); font-size: 14px; padding: 10px; border-radius: 8px; width: 100%; cursor: pointer; }
+.btn-reset:hover { border-color: var(--accent); color: var(--text); }
+
+/* Timer */
+.timer-display { font-size: 56px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; letter-spacing: 2px; margin-bottom: 16px; color: var(--text); }
+.timer-btns { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.timer-btn {
+  padding: 14px 8px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--panel); color: var(--text); font-size: 13px; font-weight: 600;
+  cursor: pointer; text-align: center; transition: background 0.15s;
+  touch-action: manipulation;
+}
+.timer-btn:active { background: var(--border); }
+.timer-btn.start  { background: #238636; border-color: #238636; color: #fff; }
+.timer-btn.pause  { background: #d29922; border-color: #d29922; color: #000; }
+
+/* Countdown duration input */
+.duration-row { display: flex; gap: 8px; margin-top: 12px; align-items: center; }
+.duration-row input { flex: 1; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; color: var(--text); font-size: 14px; }
+.duration-row input:focus { outline: none; border-color: var(--accent); }
+.duration-row button { background: var(--accent); border: none; border-radius: 6px; padding: 8px 14px; color: #fff; font-size: 13px; cursor: pointer; white-space: nowrap; }
+
+.empty { color: var(--muted); font-size: 14px; text-align: center; padding: 32px; }
+.badge { display: inline-block; background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 2px 10px; font-size: 11px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="h1">Stream Control</div>
+    <div class="sub" id="ws-label">Connecting…</div>
+  </div>
+  <div class="ws-dot" id="ws-dot"></div>
+</div>
+
+<div class="content" id="content">
+  <div class="empty">Loading widgets…</div>
+</div>
+
+<script>
+let ws, wsReconnect;
+let widgets = [];
+
+function connectWS() {
+  clearTimeout(wsReconnect);
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}`);
+
+  ws.onopen = () => {
+    document.getElementById('ws-dot').className = 'ws-dot ok';
+    document.getElementById('ws-label').textContent = 'Connected';
+  };
+  ws.onmessage = e => {
+    try { handle(JSON.parse(e.data)); } catch {}
+  };
+  ws.onclose = () => {
+    document.getElementById('ws-dot').className = 'ws-dot';
+    document.getElementById('ws-label').textContent = 'Reconnecting…';
+    wsReconnect = setTimeout(connectWS, 3000);
+  };
+  ws.onerror = () => ws.close();
+}
+
+function handle(msg) {
+  if (msg.type === 'state') {
+    widgets = msg.widgets || [];
+    render();
+  } else if (msg.type === 'widget_update') {
+    const idx = widgets.findIndex(w => w.id === msg.widget.id);
+    if (idx >= 0) widgets[idx] = msg.widget; else widgets.push(msg.widget);
+    patchCard(msg.widget);
+  } else if (msg.type === 'widget_add') {
+    widgets.push(msg.widget);
+    render();
+  } else if (msg.type === 'widget_delete') {
+    widgets = widgets.filter(w => w.id !== msg.id);
+    document.getElementById('card-' + msg.id)?.remove();
+    if (!document.querySelector('.card')) render();
+  }
+}
+
+function render() {
+  const content = document.getElementById('content');
+  content.innerHTML = '';
+  const controllable = widgets.filter(w => ['death_counter','timer','countdown'].includes(w.type));
+  if (!controllable.length) {
+    content.innerHTML = '<div class="empty">No controllable widgets.<br>Add a Death Counter, Timer, or Countdown from the setup page.</div>';
+    return;
+  }
+  for (const w of controllable) content.appendChild(buildCard(w));
+}
+
+function buildCard(w) {
+  const card = document.createElement('div');
+  card.className = 'card'; card.id = 'card-' + w.id;
+
+  const icons = { death_counter: '💀', timer: '⏱', countdown: '⏳' };
+  card.innerHTML = `<div class="card-header"><span class="card-icon">${icons[w.type]}</span><span class="card-title">${escHtml(w.label || w.type)}</span><span class="badge card-label">${w.type.replace(/_/g,' ')}</span></div>`;
+
+  const body = document.createElement('div');
+  body.className = 'card-body';
+
+  if (w.type === 'death_counter') {
+    body.innerHTML = `
+      <div class="counter-display" id="val-${w.id}">${w.config.count ?? 0}</div>
+      <div class="counter-btns">
+        <button class="big-btn btn-minus" onclick="action('${w.id}','decrement')">−</button>
+        <button class="big-btn btn-plus"  onclick="action('${w.id}','increment')">+</button>
+        <div class="reset-row"><button class="btn-reset" onclick="action('${w.id}','reset')">↺ Reset to 0</button></div>
+      </div>`;
+  }
+
+  if (w.type === 'timer') {
+    const elapsed = w.config.running
+      ? (Date.now() - w.config.startedAt) + (w.config.pausedElapsed || 0)
+      : (w.config.pausedElapsed || 0);
+    const running = w.config.running;
+    body.innerHTML = `
+      <div class="timer-display" id="val-${w.id}" data-timer-id="${w.id}" data-timer-type="up">${formatMs(elapsed)}</div>
+      <div class="timer-btns">
+        <button class="timer-btn ${running ? '' : 'start'}" id="start-${w.id}" onclick="action('${w.id}','start')">${running ? '▶ Running' : '▶ Start'}</button>
+        <button class="timer-btn ${running ? 'pause' : ''}" id="pause-${w.id}" onclick="action('${w.id}','pause')">⏸ Pause</button>
+        <button class="timer-btn" onclick="action('${w.id}','reset')">↺ Reset</button>
+      </div>`;
+  }
+
+  if (w.type === 'countdown') {
+    const elapsed = w.config.running
+      ? (Date.now() - w.config.startedAt) + (w.config.pausedElapsed || 0)
+      : (w.config.pausedElapsed || 0);
+    const remaining = Math.max(0, (w.config.totalMs || 0) - elapsed);
+    const running = w.config.running;
+    const totalMin = Math.floor((w.config.totalMs || 0) / 60000);
+    const totalSec = Math.floor(((w.config.totalMs || 0) % 60000) / 1000);
+    body.innerHTML = `
+      <div class="timer-display" id="val-${w.id}" data-timer-id="${w.id}" data-timer-type="down">${formatMs(remaining)}</div>
+      <div class="timer-btns">
+        <button class="timer-btn ${running ? '' : 'start'}" onclick="action('${w.id}','start')">${running ? '▶ Running' : '▶ Start'}</button>
+        <button class="timer-btn ${running ? 'pause' : ''}" onclick="action('${w.id}','pause')">⏸ Pause</button>
+        <button class="timer-btn" onclick="action('${w.id}','reset')">↺ Reset</button>
+      </div>
+      <div class="duration-row">
+        <input type="text" id="dur-${w.id}" placeholder="mm:ss or minutes" value="${totalMin}:${String(totalSec).padStart(2,'0')}">
+        <button onclick="setDuration('${w.id}')">Set Duration</button>
+      </div>`;
+  }
+
+  card.appendChild(body);
+  return card;
+}
+
+function patchCard(w) {
+  const valEl = document.getElementById('val-' + w.id);
+  if (!valEl) { render(); return; }
+  if (w.type === 'death_counter') {
+    valEl.textContent = w.config.count ?? 0;
+  }
+  // Timer/countdown patches happen via RAF loop; update button states
+  if (w.type === 'timer' || w.type === 'countdown') {
+    const startBtn = document.getElementById('start-' + w.id);
+    const pauseBtn = document.getElementById('pause-' + w.id);
+    if (startBtn) {
+      startBtn.textContent = w.config.running ? '▶ Running' : '▶ Start';
+      startBtn.className   = 'timer-btn' + (w.config.running ? '' : ' start');
+    }
+    if (pauseBtn) pauseBtn.className = 'timer-btn' + (w.config.running ? ' pause' : '');
+  }
+}
+
+function action(id, act, value) {
+  fetch('/api/widgets/' + id + '/action', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: act, value }),
+  }).catch(() => {});
+}
+
+function setDuration(id) {
+  const inp = document.getElementById('dur-' + id);
+  if (!inp) return;
+  const raw = inp.value.trim();
+  let ms = 0;
+  if (raw.includes(':')) {
+    const parts = raw.split(':');
+    ms = (parseInt(parts[0]) || 0) * 60000 + (parseInt(parts[1]) || 0) * 1000;
+  } else {
+    ms = (parseInt(raw) || 0) * 60000;
+  }
+  action(id, 'set_duration', ms);
+}
+
+// ── Timer RAF loop ────────────────────────────────────────────────────────────
+
+function timerLoop() {
+  const now = Date.now();
+  document.querySelectorAll('[data-timer-id]').forEach(el => {
+    const id = el.dataset.timerId;
+    const w  = widgets.find(w => w.id === id);
+    if (!w) return;
+    const c = w.config;
+    const elapsed = c.running ? (now - c.startedAt) + (c.pausedElapsed || 0) : (c.pausedElapsed || 0);
+    el.textContent = el.dataset.timerType === 'up'
+      ? formatMs(elapsed)
+      : formatMs(Math.max(0, (c.totalMs || 0) - elapsed));
+  });
+  requestAnimationFrame(timerLoop);
+}
+
+function formatMs(ms) {
+  const s = Math.floor(ms / 1000), h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60), sec = s % 60;
+  return h > 0 ? `${h}:${p2(m)}:${p2(sec)}` : `${p2(m)}:${p2(sec)}`;
+}
+function p2(n) { return String(n).padStart(2,'0'); }
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+connectWS();
+requestAnimationFrame(timerLoop);
+</script>
+</body>
+</html>
