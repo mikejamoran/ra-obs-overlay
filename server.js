@@ -474,6 +474,7 @@ const upload = multer({
 
 // ── Middleware ──────────────────────────────────────────────────────────────────
 
+app.set('trust proxy', 1); // trust Caddy's X-Forwarded-Proto so req.protocol returns 'https'
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
