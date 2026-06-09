@@ -11,6 +11,10 @@ const WS       = require('ws');
 const { WebSocketServer } = WS;
 const multer   = require('multer');
 
+const triggers = require('./lib/triggers');
+const eventsub = require('./lib/eventsub');
+const media    = require('./lib/media');
+
 const app  = express();
 const PORT = parseInt(process.env.PORT || '7890');
 
@@ -46,10 +50,15 @@ let S = {
     panelVisible: true, panelLocked: false,
   },
   widgets: [],
+  triggers: [],
+  mediaFolders: [],
   twitchConnected:  false,
   twitchChannel:    process.env.TWITCH_CHANNEL || '',
   twitchAccessToken:  null,
   twitchRefreshToken: null,
+  twitchUserId:       null,
+  twitchScopes:       [],
+  twitchNeedsReauth:  false,
   lastAchRefresh:  0,
   lastGameCheck:   0,
   nowPlayingId:    null,
@@ -68,9 +77,13 @@ function loadConfig() {
       if (saved.display)       Object.assign(S.display, saved.display);
       if (saved.gameId)        S.gameId = saved.gameId;
       if (saved.widgets)       S.widgets = saved.widgets;
+      if (saved.triggers)      S.triggers = saved.triggers.map(t => triggers.normalizeTrigger(t));
+      if (saved.mediaFolders)  S.mediaFolders = saved.mediaFolders;
       if (saved.twitchChannel)      S.twitchChannel      = saved.twitchChannel;
       if (saved.twitchAccessToken)  S.twitchAccessToken  = saved.twitchAccessToken;
       if (saved.twitchRefreshToken) S.twitchRefreshToken = saved.twitchRefreshToken;
+      if (saved.twitchUserId)       S.twitchUserId       = saved.twitchUserId;
+      if (saved.twitchScopes)       S.twitchScopes       = saved.twitchScopes;
     } catch (e) { console.error('[config] Load error:', e.message); }
   }
   if (process.env.RA_USERNAME)    S.creds.username = process.env.RA_USERNAME;
@@ -82,8 +95,10 @@ function saveConfig() {
   try {
     fs.writeFileSync(CONFIG_FILE, JSON.stringify({
       creds: S.creds, display: S.display, gameId: S.gameId,
-      widgets: S.widgets, twitchChannel: S.twitchChannel,
+      widgets: S.widgets, triggers: S.triggers, mediaFolders: S.mediaFolders,
+      twitchChannel: S.twitchChannel,
       twitchAccessToken: S.twitchAccessToken, twitchRefreshToken: S.twitchRefreshToken,
+      twitchUserId: S.twitchUserId, twitchScopes: S.twitchScopes,
     }, null, 2));
   } catch (e) { console.error('[config] Save error:', e.message); }
 }
@@ -129,6 +144,10 @@ function broadcast(msg) {
   wss.clients.forEach(ws => { if (ws.readyState === 1) ws.send(data); });
 }
 
+function twitchStatus() {
+  return { connected: S.twitchConnected, channel: S.twitchChannel, needsReauth: S.twitchNeedsReauth };
+}
+
 function getFullState() {
   return {
     type: 'state',
@@ -136,7 +155,11 @@ function getFullState() {
     display: S.display, widgets: S.widgets,
     connected: S.connected,
     nowPlayingId: S.nowPlayingId, nowPlayingTitle: S.nowPlayingTitle,
-    twitch: { connected: S.twitchConnected, channel: S.twitchChannel },
+    twitch: twitchStatus(),
+    // Queue summaries + the alert currently on screen (so a client connecting
+    // mid-alert can render it). Full trigger configs stay out of this payload —
+    // it goes to the unauthenticated overlay.
+    alerts: { ...triggers.getQueueState(), playingAlert: triggers.getPlayingAlert() },
   };
 }
 
@@ -240,8 +263,8 @@ function parseTags(raw) {
   return tags;
 }
 
-function checkChatPermission(widget, tags) {
-  const perm     = widget.config.chatPermission || 'mods';
+function checkPermission({ permission, allowedUsers }, tags) {
+  const perm     = permission || 'mods';
   const username = (tags['display-name'] || tags.username || '').toLowerCase();
   const badges   = tags.badges || {};
   const isBroadcaster = !!badges.broadcaster;
@@ -253,7 +276,7 @@ function checkChatPermission(widget, tags) {
   if (perm === 'mods')        return isBroadcaster || isMod;
   if (perm === 'broadcaster') return isBroadcaster;
   if (perm === 'custom') {
-    const allowed = (widget.config.chatAllowedUsers || '').toLowerCase()
+    const allowed = (allowedUsers || '').toLowerCase()
       .split(',').map(s => s.trim()).filter(Boolean);
     return isBroadcaster || allowed.includes(username);
   }
@@ -271,7 +294,7 @@ function handleChatCommand(msg, tags) {
     if (suffix === '++' || suffix === '+' || suffix === '+1') action = 'increment';
     else if (suffix === '--' || suffix === '-' || suffix === '-1') action = 'decrement';
     else if (suffix === 'reset') action = 'reset';
-    if (!action || !checkChatPermission(widget, tags)) continue;
+    if (!action || !checkPermission({ permission: widget.config.chatPermission, allowedUsers: widget.config.chatAllowedUsers }, tags)) continue;
     applyWidgetAction(widget, { action });
     announceDeathAction(widget, action);
     saveConfig();
@@ -281,6 +304,15 @@ function handleChatCommand(msg, tags) {
 
 function onTwitchMessage(tags, message) {
   handleChatCommand(message, tags);
+  if (tags.bits) {
+    triggers.handleEvent({
+      type:   'cheer',
+      user:   tags['display-name'] || tags.username || '',
+      amount: parseInt(tags.bits) || 0,
+      message,
+    });
+  }
+  triggers.checkChatTriggers(message, tags);
   if (S.widgets.some(w => w.type === 'chat' && w.visible)) {
     broadcast({
       type:      'chat_message',
@@ -332,7 +364,7 @@ function connectTwitch(channel, token) {
           joined = true;
           S.twitchConnected = true;
           S.twitchChannel   = channel;
-          broadcast({ type: 'twitch_status', connected: true, channel });
+          broadcast({ type: 'twitch_status', ...twitchStatus() });
           console.log(`[Twitch] Connected to #${channel}`);
           resolve();
         }
@@ -349,7 +381,7 @@ function connectTwitch(channel, token) {
       twitchWs = null;
       if (S.twitchConnected) {
         S.twitchConnected = false;
-        broadcast({ type: 'twitch_status', connected: false });
+        broadcast({ type: 'twitch_status', ...twitchStatus() });
         console.log('[Twitch] Disconnected');
       }
       if (!joined) reject(new Error('Connection closed before joining channel'));
@@ -369,7 +401,7 @@ function disconnectTwitch() {
   try { twitchWs.close(); } catch {}
   twitchWs = null;
   S.twitchConnected = false;
-  broadcast({ type: 'twitch_status', connected: false });
+  broadcast({ type: 'twitch_status', ...twitchStatus() });
 }
 
 function sendTwitchMessage(message) {
@@ -500,8 +532,8 @@ const uploadStorage = multer.diskStorage({
 });
 const upload = multer({
   storage: uploadStorage,
-  limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => cb(null, /\.(png|jpe?g|gif|webp|svg)$/i.test(file.originalname)),
+  limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => cb(null, media.MEDIA_EXT.test(file.originalname)),
 });
 
 // ── Middleware ──────────────────────────────────────────────────────────────────
@@ -571,7 +603,7 @@ app.get('/api/state', (req, res) => {
     gameInfo: S.gameInfo, achievements: S.achievements,
     display: S.display, widgets: S.widgets, connected: S.connected,
     nowPlayingId: S.nowPlayingId, nowPlayingTitle: S.nowPlayingTitle,
-    twitch: { connected: S.twitchConnected, channel: S.twitchChannel },
+    twitch: twitchStatus(),
   });
 });
 
@@ -585,7 +617,7 @@ app.get('/api/config', basicAuth, (req, res) => {
     gameId: S.gameId, display: S.display, connected: S.connected,
     nowPlayingId: S.nowPlayingId, nowPlayingTitle: S.nowPlayingTitle,
     widgets: S.widgets,
-    twitch: { connected: S.twitchConnected, channel: S.twitchChannel },
+    twitch: { ...twitchStatus(), scopes: S.twitchScopes, missingScopes: eventsub.missingScopes() },
   });
 });
 
@@ -702,8 +734,8 @@ app.post('/api/upload', basicAuth, upload.single('file'), (req, res) => {
 app.get('/api/uploads', basicAuth, (req, res) => {
   try {
     const files = fs.readdirSync(UPLOADS_DIR)
-      .filter(f => /\.(png|jpe?g|gif|webp|svg)$/i.test(f))
-      .map(f => ({ filename: f, src: `/uploads/${f}` }));
+      .filter(f => media.MEDIA_EXT.test(f))
+      .map(f => ({ filename: f, src: `/uploads/${f}`, kind: media.kindOf(f) }));
     res.json({ files });
   } catch { res.json({ files: [] }); }
 });
@@ -716,13 +748,169 @@ app.delete('/api/uploads/:filename', basicAuth, (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Routes: triggers & alerts ───────────────────────────────────────────────────
+
+app.get('/api/triggers', basicAuth, (req, res) => {
+  res.json({ triggers: S.triggers, missingScopes: eventsub.missingScopes() });
+});
+
+app.post('/api/triggers', basicAuth, (req, res) => {
+  const trigger = triggers.normalizeTrigger(req.body || {});
+  S.triggers.push(trigger);
+  saveConfig();
+  eventsub.refresh();
+  res.json({ ok: true, trigger });
+});
+
+app.put('/api/triggers/:id', basicAuth, (req, res) => {
+  const idx = S.triggers.findIndex(t => t.id === req.params.id);
+  if (idx < 0) return res.status(404).json({ error: 'not found' });
+  S.triggers[idx] = triggers.normalizeTrigger(req.body || {}, S.triggers[idx]);
+  saveConfig();
+  eventsub.refresh();
+  res.json({ ok: true, trigger: S.triggers[idx] });
+});
+
+app.delete('/api/triggers/:id', basicAuth, (req, res) => {
+  const idx = S.triggers.findIndex(t => t.id === req.params.id);
+  if (idx < 0) return res.status(404).json({ error: 'not found' });
+  S.triggers.splice(idx, 1);
+  saveConfig();
+  eventsub.refresh();
+  res.json({ ok: true });
+});
+
+app.post('/api/triggers/:id/test', basicAuth, (req, res) => {
+  const t = S.triggers.find(t => t.id === req.params.id);
+  if (!t) return res.status(404).json({ error: 'not found' });
+  triggers.fireTest(t);
+  res.json({ ok: true });
+});
+
+app.get('/api/alerts/queue', basicAuth, (req, res) => res.json(triggers.getQueueState()));
+app.post('/api/alerts/skip',  basicAuth, (req, res) => { triggers.skip();  res.json({ ok: true }); });
+app.post('/api/alerts/clear', basicAuth, (req, res) => { triggers.clear(); res.json({ ok: true }); });
+
+// ── Routes: media library ───────────────────────────────────────────────────────
+
+app.get('/api/media', basicAuth, (req, res) => {
+  res.json({ media: media.listMedia() });
+});
+
+app.get('/api/media/folders', basicAuth, (req, res) => {
+  res.json({ folders: S.mediaFolders });
+});
+
+app.post('/api/media/folders', basicAuth, (req, res) => {
+  try {
+    const folder = media.addFolder((req.body || {}).path, (req.body || {}).label);
+    saveConfig();
+    res.json({ ok: true, folder });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.delete('/api/media/folders/:id', basicAuth, (req, res) => {
+  const idx = S.mediaFolders.findIndex(f => f.id === req.params.id);
+  if (idx < 0) return res.status(404).json({ error: 'not found' });
+  S.mediaFolders.splice(idx, 1);
+  saveConfig();
+  res.json({ ok: true });
+});
+
+// Public: the overlay loads alert media from here without auth.
+app.get('/media/:folderId/:filename', (req, res) => media.serveFolderFile(req, res));
+
 // ── Routes: Twitch OAuth 2.0 ────────────────────────────────────────────────────
 
 const TWITCH_AUTH_URL  = 'https://id.twitch.tv/oauth2/authorize';
 const TWITCH_TOKEN_URL = 'https://id.twitch.tv/oauth2/token';
-const TWITCH_SCOPE     = 'chat:read chat:edit';
+const TWITCH_SCOPE     = 'chat:read chat:edit channel:read:redemptions channel:read:subscriptions moderator:read:followers';
 
 let oauthState = null;
+
+// ── Twitch token lifecycle ──────────────────────────────────────────────────────
+// User access tokens expire after ~4h; EventSub and Helix calls need a live one.
+
+async function refreshTwitchToken() {
+  const clientId     = process.env.TWITCH_CLIENT_ID;
+  const clientSecret = process.env.TWITCH_CLIENT_SECRET;
+  if (!S.twitchRefreshToken || !clientId || !clientSecret)
+    throw new Error('No refresh token or Twitch app credentials');
+  const res = await fetch(TWITCH_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: clientId, client_secret: clientSecret,
+      grant_type: 'refresh_token', refresh_token: S.twitchRefreshToken,
+    }),
+  });
+  const data = await res.json();
+  if (!data.access_token) {
+    S.twitchNeedsReauth = true;
+    broadcast({ type: 'twitch_status', ...twitchStatus() });
+    throw new Error('Token refresh rejected: ' + JSON.stringify(data));
+  }
+  S.twitchAccessToken  = data.access_token;
+  S.twitchRefreshToken = data.refresh_token || S.twitchRefreshToken;
+  S.twitchNeedsReauth  = false;
+  saveConfig();
+  console.log('[Twitch] Access token refreshed');
+  // IRC keeps an old token's session alive, but if we're disconnected, reconnect now
+  if (!S.twitchConnected && S.twitchChannel) {
+    connectTwitch(S.twitchChannel, S.twitchAccessToken).catch(e =>
+      console.error('[Twitch] Reconnect after refresh failed:', e.message));
+  }
+  return S.twitchAccessToken;
+}
+
+// Twitch requires tokens to be validated hourly. Also records granted scopes
+// so the setup page can prompt for re-auth when alerts need new ones.
+async function validateTwitchToken() {
+  if (!S.twitchAccessToken) return false;
+  try {
+    const res = await fetch('https://id.twitch.tv/oauth2/validate', {
+      headers: { 'Authorization': `OAuth ${S.twitchAccessToken}` },
+    });
+    if (res.status === 401) {
+      await refreshTwitchToken();
+      return validateTwitchToken();
+    }
+    const data = await res.json();
+    S.twitchScopes = data.scopes || [];
+    if (!S.twitchUserId && data.user_id) S.twitchUserId = data.user_id;
+    const missing = eventsub.missingScopes();
+    if (missing.length) {
+      S.twitchNeedsReauth = true;
+      console.warn('[Twitch] Token is missing scopes needed by alerts:', missing.join(', '));
+      broadcast({ type: 'twitch_status', ...twitchStatus() });
+    }
+    return true;
+  } catch (e) {
+    console.error('[Twitch] Token validation failed:', e.message);
+    return false;
+  }
+}
+
+async function helixRequest(method, apiPath, body) {
+  // TWITCH_HELIX_URL override lets the Twitch CLI mock server stand in for Helix
+  const doFetch = () => fetch((process.env.TWITCH_HELIX_URL || 'https://api.twitch.tv/helix') + apiPath, {
+    method,
+    headers: {
+      'Authorization': `Bearer ${S.twitchAccessToken}`,
+      'Client-Id':     process.env.TWITCH_CLIENT_ID,
+      'Content-Type':  'application/json',
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  let res = await doFetch();
+  if (res.status === 401) {
+    await refreshTwitchToken();
+    res = await doFetch();
+  }
+  return res;
+}
 
 // Step 1 — redirect to Twitch
 app.get('/auth/twitch', basicAuth, (req, res) => {
@@ -782,11 +970,15 @@ app.get('/auth/twitch/callback', basicAuth, async (req, res) => {
 
     // Store token in memory (persisted to config for auto-reconnect)
     S.twitchChannel      = channel;
+    S.twitchUserId       = userData.data[0].id;
     S.twitchAccessToken  = tokenData.access_token;
     S.twitchRefreshToken = tokenData.refresh_token || null;
+    S.twitchScopes       = tokenData.scope || [];
+    S.twitchNeedsReauth  = false;
     saveConfig();
 
     await connectTwitch(channel, tokenData.access_token);
+    eventsub.refresh();
     res.redirect('/?twitch=connected');
   } catch (e) {
     fail(e.message);
@@ -795,14 +987,30 @@ app.get('/auth/twitch/callback', basicAuth, async (req, res) => {
 
 // Manual disconnect
 app.post('/api/twitch/disconnect', basicAuth, async (req, res) => {
+  eventsub.stop();
   await disconnectTwitch();
   S.twitchAccessToken  = null;
   S.twitchRefreshToken = null;
+  S.twitchUserId       = null;
+  S.twitchScopes       = [];
+  S.twitchNeedsReauth  = false;
   saveConfig();
   res.json({ ok: true });
 });
 
 // ── Start ───────────────────────────────────────────────────────────────────────
+
+triggers.init({ getState: () => S, saveConfig, broadcast, checkPermission });
+media.init({ getState: () => S, uploadsDir: UPLOADS_DIR });
+eventsub.init({
+  getState: () => S,
+  handleEvent: evt => triggers.handleEvent(evt),
+  helixRequest,
+  onAuthRevoked: () => {
+    S.twitchNeedsReauth = true;
+    broadcast({ type: 'twitch_status', ...twitchStatus() });
+  },
+});
 
 loadConfig();
 if (S.creds.username && S.creds.api_key) {
@@ -831,9 +1039,29 @@ wss.on('connection', ws => {
 });
 
 // Auto-reconnect Twitch using saved OAuth token (preferred) or env token (fallback)
-const twitchAutoToken = S.twitchAccessToken || process.env.TWITCH_TOKEN;
-if (twitchAutoToken && S.twitchChannel) {
-  connectTwitch(S.twitchChannel, twitchAutoToken).catch(e =>
-    console.error('[Twitch] Auto-connect failed:', e.message)
-  );
+async function autoConnectTwitch() {
+  const token = S.twitchAccessToken || process.env.TWITCH_TOKEN;
+  if (!token || !S.twitchChannel) return;
+  try {
+    await connectTwitch(S.twitchChannel, token);
+  } catch (e) {
+    console.error('[Twitch] Auto-connect failed:', e.message);
+    // Saved token likely expired — refresh (which reconnects IRC) and carry on
+    if (S.twitchAccessToken && S.twitchRefreshToken && /login failed/i.test(e.message)) {
+      try { await refreshTwitchToken(); }
+      catch (e2) { console.error('[Twitch] Token refresh failed:', e2.message); return; }
+    } else return;
+  }
+  if (S.twitchAccessToken) {
+    await validateTwitchToken();
+    eventsub.refresh();
+  }
+}
+autoConnectTwitch();
+
+// Twitch requires hourly token validation; this also catches expiry → refresh
+setInterval(() => { validateTwitchToken().catch(() => {}); }, 60 * 60 * 1000);
+
+if ((!process.env.SETUP_USER || !process.env.SETUP_PASS) && S.mediaFolders.length) {
+  console.warn('[security] SETUP_USER/SETUP_PASS not set — anyone who can reach this server can manage media folders. Set them in .env if the server is exposed.');
 }
