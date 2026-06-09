@@ -7,9 +7,9 @@ const fs       = require('fs');
 const path     = require('path');
 const https    = require('https');
 const crypto   = require('crypto');
-const { WebSocketServer } = require('ws');
+const WS       = require('ws');
+const { WebSocketServer } = WS;
 const multer   = require('multer');
-const tmi      = require('tmi.js');
 
 const app  = express();
 const PORT = parseInt(process.env.PORT || '7890');
@@ -206,18 +206,41 @@ function applyWidgetAction(widget, { action, value }) {
   }
 }
 
-// ── Twitch ──────────────────────────────────────────────────────────────────────
+// ── Twitch IRC (native WebSocket, no tmi.js) ────────────────────────────────────
 
-let twitchClient = null;
+let twitchWs = null;
+
+// Parse @key=value;key2=value2 tag string into an object.
+// Badges are decoded into { broadcaster: '1', moderator: '1', ... }
+function parseTags(raw) {
+  const tags = {};
+  for (const part of raw.split(';')) {
+    const eq = part.indexOf('=');
+    if (eq < 0) continue;
+    tags[part.slice(0, eq)] = part.slice(eq + 1) || null;
+  }
+  if (typeof tags.badges === 'string') {
+    const obj = {};
+    for (const b of tags.badges.split(',')) {
+      const slash = b.indexOf('/');
+      if (slash >= 0) obj[b.slice(0, slash)] = b.slice(slash + 1);
+    }
+    tags.badges = obj;
+  } else {
+    tags.badges = {};
+  }
+  return tags;
+}
 
 function checkChatPermission(widget, tags) {
-  const perm = widget.config.chatPermission || 'mods';
-  const username = (tags.username || '').toLowerCase();
-  const isBroadcaster = !!(tags.badges && tags.badges.broadcaster) || tags['user-type'] === 'broadcaster';
-  const isMod = !!tags.mod || tags['user-type'] === 'mod';
-  const isSub = !!tags.subscriber;
+  const perm     = widget.config.chatPermission || 'mods';
+  const username = (tags['display-name'] || tags.username || '').toLowerCase();
+  const badges   = tags.badges || {};
+  const isBroadcaster = !!badges.broadcaster;
+  const isMod         = !!badges.moderator || tags.mod === '1';
+  const isSub         = !!badges.subscriber || tags.subscriber === '1';
   if (perm === 'everyone')    return true;
-  if (perm === 'followers')   return true; // Twitch enforces follower-only at chat level; Helix API needed for per-message check
+  if (perm === 'followers')   return true; // follower check needs Helix API; Twitch enforces it at chat level
   if (perm === 'subscribers') return isBroadcaster || isMod || isSub;
   if (perm === 'mods')        return isBroadcaster || isMod;
   if (perm === 'broadcaster') return isBroadcaster;
@@ -233,10 +256,10 @@ function handleChatCommand(msg, tags) {
   const lower = msg.trim().toLowerCase();
   for (const widget of S.widgets) {
     if (widget.type !== 'death_counter') continue;
-    const cmd = (widget.config.chatCommand || '!death').toLowerCase().trim();
+    const cmd    = (widget.config.chatCommand || '!death').toLowerCase().trim();
     if (!lower.startsWith(cmd)) continue;
     const suffix = lower.slice(cmd.length).trim();
-    let action = null;
+    let action   = null;
     if (suffix === '++' || suffix === '+' || suffix === '+1') action = 'increment';
     else if (suffix === '--' || suffix === '-' || suffix === '-1') action = 'decrement';
     else if (suffix === 'reset') action = 'reset';
@@ -247,39 +270,93 @@ function handleChatCommand(msg, tags) {
   }
 }
 
-async function connectTwitch(channel, token) {
-  await disconnectTwitch();
-  if (!channel || !token) return;
-  const password = token.startsWith('oauth:') ? token : `oauth:${token}`;
-  twitchClient = new tmi.Client({
-    options: { debug: false },
-    identity: { username: channel, password },
-    channels: [channel],
-  });
-  twitchClient.on('message', (_ch, tags, message) => {
-    handleChatCommand(message, tags);
-    if (S.widgets.some(w => w.type === 'chat' && w.visible)) {
-      broadcast({
-        type:      'chat_message',
-        username:  tags['display-name'] || tags.username || 'anon',
-        color:     tags.color || null,
-        message,
-        badges:    tags.badges || {},
-        timestamp: Date.now(),
-      });
-    }
-  });
-  await twitchClient.connect();
-  S.twitchConnected = true;
-  S.twitchChannel   = channel;
-  broadcast({ type: 'twitch_status', connected: true, channel });
-  console.log(`[Twitch] Connected to #${channel}`);
+function onTwitchMessage(tags, message) {
+  handleChatCommand(message, tags);
+  if (S.widgets.some(w => w.type === 'chat' && w.visible)) {
+    broadcast({
+      type:      'chat_message',
+      username:  tags['display-name'] || tags.username || 'anon',
+      color:     tags.color || null,
+      message,
+      badges:    tags.badges || {},
+      timestamp: Date.now(),
+    });
+  }
 }
 
-async function disconnectTwitch() {
-  if (!twitchClient) return;
-  try { await twitchClient.disconnect(); } catch {}
-  twitchClient = null;
+function connectTwitch(channel, token) {
+  return new Promise((resolve, reject) => {
+    disconnectTwitch();
+    if (!channel || !token) return reject(new Error('channel and token required'));
+
+    const password = token.startsWith('oauth:') ? token : `oauth:${token}`;
+    const sock     = new WS('wss://irc-ws.chat.twitch.tv:443');
+    let   joined   = false;
+
+    sock.on('open', () => {
+      sock.send(`PASS ${password}\r\n`);
+      sock.send(`NICK ${channel.toLowerCase()}\r\n`);
+      sock.send('CAP REQ :twitch.tv/tags twitch.tv/commands\r\n');
+      sock.send(`JOIN #${channel.toLowerCase()}\r\n`);
+    });
+
+    sock.on('message', data => {
+      for (const line of data.toString().split('\r\n').filter(Boolean)) {
+        if (line.startsWith('PING')) { sock.send('PONG :tmi.twitch.tv\r\n'); continue; }
+
+        // Extract optional @tags prefix
+        let tags = {}, rest = line;
+        if (rest.startsWith('@')) {
+          const sp = rest.indexOf(' ');
+          tags = parseTags(rest.slice(1, sp));
+          rest = rest.slice(sp + 1);
+        }
+
+        // Login failure
+        if (rest.includes('Login authentication failed') || rest.includes(':Login unsuccessful')) {
+          sock.close();
+          return reject(new Error('Twitch login failed — check your OAuth token'));
+        }
+
+        // JOIN confirmation
+        if (!joined && rest.includes(`JOIN #${channel.toLowerCase()}`)) {
+          joined = true;
+          S.twitchConnected = true;
+          S.twitchChannel   = channel;
+          broadcast({ type: 'twitch_status', connected: true, channel });
+          console.log(`[Twitch] Connected to #${channel}`);
+          resolve();
+        }
+
+        // PRIVMSG — chat message
+        const pm = rest.match(/^:\S+ PRIVMSG #\S+ :(.+)$/);
+        if (pm) onTwitchMessage(tags, pm[1]);
+      }
+    });
+
+    sock.on('close', () => {
+      twitchWs = null;
+      if (S.twitchConnected) {
+        S.twitchConnected = false;
+        broadcast({ type: 'twitch_status', connected: false });
+        console.log('[Twitch] Disconnected');
+      }
+      if (!joined) reject(new Error('Connection closed before joining channel'));
+    });
+
+    sock.on('error', err => {
+      console.error('[Twitch] WebSocket error:', err.message);
+      if (!joined) reject(err);
+    });
+
+    twitchWs = sock;
+  });
+}
+
+function disconnectTwitch() {
+  if (!twitchWs) return;
+  try { twitchWs.close(); } catch {}
+  twitchWs = null;
   S.twitchConnected = false;
   broadcast({ type: 'twitch_status', connected: false });
 }

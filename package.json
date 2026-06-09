@@ -1,7 +1,7 @@
 {
-  "name": "ra-obs-overlay",
-  "version": "1.0.0",
-  "description": "RetroAchievements achievement overlay for OBS Browser Source",
+  "name": "overlay-tool",
+  "version": "1.1.0",
+  "description": "Stream overlay tool with RetroAchievements, widgets, Twitch chat, and control panel",
   "main": "server.js",
   "engines": { "node": ">=18.0.0" },
   "scripts": {
@@ -11,7 +11,6 @@
     "dotenv": "^16.0.0",
     "express": "^4.19.0",
     "multer": "^1.4.5-lts.1",
-    "tmi.js": "^1.8.5",
     "ws": "^8.18.0"
   }
 }
