@@ -573,7 +573,32 @@ input[type=color] {
       </div>
       <hr class="divider">
       <div class="field">
-        <label>Recent Panel Position</label>
+        <label>Display mode</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <label class="radio-opt active" id="recentModeStack" style="width:auto;padding:8px 16px">
+            <input type="radio" name="recentMode" value="stack" checked onchange="setDisplay('recentMode','stack');document.getElementById('recentModeStack').classList.add('active');document.getElementById('recentModeTicker').classList.remove('active');document.getElementById('recentTickerOpts').style.display='none'">
+            ☰ Stack
+          </label>
+          <label class="radio-opt" id="recentModeTicker" style="width:auto;padding:8px 16px">
+            <input type="radio" name="recentMode" value="ticker" onchange="setDisplay('recentMode','ticker');document.getElementById('recentModeTicker').classList.add('active');document.getElementById('recentModeStack').classList.remove('active');document.getElementById('recentTickerOpts').style.display=''">
+            ▶ Ticker / Scrolling
+          </label>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-top:6px">
+          <strong style="color:var(--text)">Stack</strong> — vertical list of tiles. &nbsp;
+          <strong style="color:var(--text)">Ticker</strong> — pills scroll horizontally like a news headline. Resize the panel wide in OBS Interact to get the full effect.
+        </div>
+      </div>
+      <div id="recentTickerOpts" style="display:none">
+        <div class="field" style="margin-top:10px">
+          <label>Scroll speed: <span id="recentSpeedVal">80</span> px/s</label>
+          <input type="range" min="20" max="300" value="80" id="recentSpeed"
+                 oninput="setDisplay('recentSpeed',+this.value); document.getElementById('recentSpeedVal').textContent=this.value">
+        </div>
+      </div>
+      <hr class="divider">
+      <div class="field">
+        <label>Default position <span style="font-size:11px;color:var(--muted)">(drag in OBS Interact to override)</span></label>
         <div class="pos-grid" id="recentPosGrid">
           <div class="pos-btn" data-pos="top-left"      onclick="setRecentPos(this)">↖ Top Left</div>
           <div class="pos-btn" data-pos="top-center"    onclick="setRecentPos(this)">↑ Top</div>
@@ -928,6 +953,17 @@ function applyDisplayToUI(d) {
     document.querySelectorAll('#recentPosGrid .pos-btn').forEach(b => {
       b.classList.toggle('active', b.dataset.pos === d.recentPos);
     });
+  }
+  if (d.recentMode) {
+    const isTicker = d.recentMode === 'ticker';
+    document.getElementById('recentModeStack').classList.toggle('active', !isTicker);
+    document.getElementById('recentModeTicker').classList.toggle('active', isTicker);
+    document.getElementById('recentTickerOpts').style.display = isTicker ? '' : 'none';
+    document.querySelector('[name=recentMode][value=' + d.recentMode + ']').checked = true;
+  }
+  if (d.recentSpeed !== undefined) {
+    document.getElementById('recentSpeed').value = d.recentSpeed;
+    document.getElementById('recentSpeedVal').textContent = d.recentSpeed;
   }
 }
 

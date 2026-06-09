@@ -135,22 +135,63 @@ html, body {
 .tile-text-name { font-size: calc(var(--font-size) - 1px); font-weight: 600; flex: 1; color: var(--text-color); }
 .tile-text-pts  { font-size: 10px; color: var(--muted-color); flex-shrink: 0; }
 
-/* Recent panel */
+/* Recent panel — position: absolute so it lives inside the canvas and is draggable */
 #recent-panel {
-  position: fixed;
-  width: var(--panel-width, 440px);
+  position: absolute;
   display: flex; flex-direction: column; gap: var(--tile-gap);
+  cursor: grab;
+  min-width: 80px; min-height: 36px;
 }
 #recent-panel.bottom-left  { bottom: 16px; left: 16px; }
 #recent-panel.bottom-right { bottom: 16px; right: 16px; }
 #recent-panel.top-left     { top: 16px; left: 16px; }
 #recent-panel.top-right    { top: 16px; right: 16px; }
+
+/* Stack mode tiles */
 .recent-tile { background: rgba(var(--bg-rgb,13,13,13), var(--bg-opacity,0.88)); border: 1px solid rgba(255,255,255,0.08); border-left: 3px solid var(--gold-color); border-radius: var(--tile-radius); padding: 6px 10px; display: flex; align-items: center; gap: 8px; animation: slideIn 0.4s ease; }
 @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 .recent-badge { width: 32px; height: 32px; border-radius: 4px; object-fit: cover; flex-shrink: 0; }
 .recent-title { font-size: 12px; font-weight: 600; flex: 1; }
 .recent-pts   { font-size: 10px; color: var(--gold-color); flex-shrink: 0; }
 .recent-date  { font-size: 10px; color: var(--muted-color); }
+
+/* Ticker mode */
+#recent-panel.mode-ticker {
+  overflow: hidden;
+  flex-direction: row;
+  align-items: center;
+  background: rgba(var(--bg-rgb,13,13,13), var(--bg-opacity,0.75));
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--tile-radius);
+  padding: 0;
+  gap: 0;
+}
+.recent-ticker-track {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  height: 100%;
+  padding: 0 14px;
+  animation: recent-tick linear infinite;
+  animation-duration: var(--ticker-dur, 20s);
+}
+@keyframes recent-tick {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.recent-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(var(--bg-rgb,13,13,13), var(--bg-opacity,0.88));
+  border-radius: 24px; padding: 5px 14px 5px 6px;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-left: 3px solid var(--gold-color);
+  flex-shrink: 0;
+}
+.recent-pill-badge { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; }
+.recent-pill-title { font-size: 13px; font-weight: 600; color: var(--text-color); }
+.recent-pill-pts   { font-size: 11px; font-weight: 700; color: var(--gold-color); }
 
 /* ── Widget base ─────────────────────────────────────────────────────────────── */
 .widget { position: absolute; cursor: grab; }
@@ -586,33 +627,128 @@ function updateTileSizeClass(tile) {
 }
 
 function renderRecentPanel(d, achs) {
+  const canvas = document.getElementById('canvas');
   let rp = document.getElementById('recent-panel');
+
   if (!d.recentEnabled) { if (rp) rp.style.display = 'none'; return; }
 
   if (!rp) {
     rp = document.createElement('div');
     rp.id = 'recent-panel';
-    document.body.appendChild(rp);
+    canvas.appendChild(rp);
+    makeDraggable(rp, '/api/display/recent-position', (x, y) => {
+      state.display.recentX = x; state.display.recentY = y;
+    });
   }
   rp.style.display = '';
-  rp.className = d.recentPos || 'bottom-left';
 
+  // Position
+  if (d.recentX !== null && d.recentX !== undefined) {
+    rp.style.left = d.recentX + 'px'; rp.style.top = d.recentY + 'px';
+    rp.style.bottom = ''; rp.style.right = ''; rp.style.transform = '';
+  } else {
+    rp.style.left = ''; rp.style.top = ''; rp.style.bottom = ''; rp.style.right = '';
+  }
+  if (d.recentW) rp.style.width  = d.recentW + 'px';
+  if (d.recentH) rp.style.height = d.recentH + 'px';
+  rp.style.zIndex = d.recentZIndex || 9;
+
+  const mode   = d.recentMode || 'stack';
   const earned = achs.filter(a => a.earned && a.dateEarned)
     .sort((a,b) => b.dateEarned.localeCompare(a.dateEarned))
     .slice(0, d.recentCount || 3);
-
-  const ids = earned.map(a => a.id).join(',');
-  if (rp.dataset.ids === ids) return;
-  rp.dataset.ids = ids;
-  rp.innerHTML = '';
-  for (const a of earned) {
-    const el = document.createElement('div');
-    el.className = 'recent-tile';
-    el.innerHTML = `<img class="recent-badge" src="${BADGE_BASE}/${a.badge}.png" loading="lazy" alt="">
-      <div style="flex:1;min-width:0"><div class="recent-title">${escHtml(a.title)}</div><div class="recent-date">${formatDate(a.dateEarned)}</div></div>
-      <div class="recent-pts">${a.points} pts</div>`;
-    rp.appendChild(el);
+  const key = mode + ':' + earned.map(a => a.id).join(',');
+  if (rp.dataset.key === key && (d.recentX === undefined || rp.style.left)) {
+    // Still set class in case mode changed
+    setRecentClass(rp, d, mode); return;
   }
+  rp.dataset.key = key;
+
+  // Clear content, preserve resize handle
+  let rh = document.getElementById('recent-resize');
+  Array.from(rp.children).forEach(c => { if (c !== rh) c.remove(); });
+
+  setRecentClass(rp, d, mode);
+
+  if (mode === 'ticker') {
+    buildRecentTicker(rp, earned, d);
+  } else {
+    for (const a of earned) {
+      const el = document.createElement('div');
+      el.className = 'recent-tile';
+      el.innerHTML = `<img class="recent-badge" src="${BADGE_BASE}/${a.badge}.png" loading="lazy" alt="">
+        <div style="flex:1;min-width:0"><div class="recent-title">${escHtml(a.title)}</div><div class="recent-date">${formatDate(a.dateEarned)}</div></div>
+        <div class="recent-pts">${a.points} pts</div>`;
+      rp.appendChild(el);
+    }
+  }
+
+  // Resize handle — always last child
+  if (!rh) {
+    rh = document.createElement('div');
+    rh.id = 'recent-resize';
+    rh.className = 'resize-handle';
+    rh.dataset.nodrag = '1';
+    rh.addEventListener('mousedown', e => {
+      e.preventDefault(); e.stopPropagation();
+      const startX = e.clientX, startY = e.clientY;
+      const startW = rp.offsetWidth, startH = rp.offsetHeight;
+      document.body.style.userSelect = 'none'; document.body.style.cursor = 'nwse-resize';
+      function onMove(e) {
+        rp.style.width  = Math.max(80,  startW + (e.clientX - startX)) + 'px';
+        rp.style.height = Math.max(36, startH + (e.clientY - startY)) + 'px';
+        // Recompute ticker duration live when resized
+        const track = rp.querySelector('.recent-ticker-track');
+        if (track) setTickerDuration(rp, track, d.recentSpeed);
+      }
+      function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.body.style.userSelect = ''; document.body.style.cursor = '';
+        const w = Math.round(rp.offsetWidth), h = Math.round(rp.offsetHeight);
+        state.display.recentW = w; state.display.recentH = h;
+        fetch('/api/display/recent-position', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({w,h}) }).catch(()=>{});
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp, { once: true });
+    });
+  }
+  rp.appendChild(rh);
+}
+
+function setRecentClass(rp, d, mode) {
+  if (d.recentX !== null && d.recentX !== undefined) {
+    rp.className = mode === 'ticker' ? 'mode-ticker' : '';
+  } else {
+    rp.className = (mode === 'ticker' ? 'mode-ticker ' : '') + (d.recentPos || 'bottom-left');
+  }
+}
+
+function buildRecentTicker(rp, earned, d) {
+  const speed = d.recentSpeed || 80;
+  const track = document.createElement('div');
+  track.className = 'recent-ticker-track';
+
+  // Build pills twice for seamless loop
+  for (let pass = 0; pass < 2; pass++) {
+    for (const a of earned) {
+      const pill = document.createElement('div');
+      pill.className = 'recent-pill';
+      pill.innerHTML = `<img class="recent-pill-badge" src="${BADGE_BASE}/${a.badge}.png" loading="lazy" alt="">
+        <span class="recent-pill-title">${escHtml(a.title)}</span>
+        <span class="recent-pill-pts">+${a.points}pts</span>`;
+      track.appendChild(pill);
+    }
+  }
+  rp.insertBefore(track, rp.querySelector('.resize-handle'));
+
+  // Set duration once layout is known
+  requestAnimationFrame(() => setTickerDuration(rp, track, speed));
+}
+
+function setTickerDuration(rp, track, speed) {
+  const halfW = track.scrollWidth / 2 || rp.offsetWidth;
+  const dur = Math.max(3, halfW / (speed || 80));
+  track.style.animationDuration = dur.toFixed(1) + 's';
 }
 
 // ── Widget rendering ──────────────────────────────────────────────────────────

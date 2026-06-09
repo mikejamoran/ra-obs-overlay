@@ -40,6 +40,8 @@ let S = {
     pinned: [], order: [],
     overrideNow: false,
     recentEnabled: false, recentCount: 3, recentPos: 'bottom-left',
+    recentMode: 'stack', recentSpeed: 80,
+    recentX: null, recentY: null, recentW: null, recentH: null, recentZIndex: 9,
     panelX: null, panelY: null, panelH: 600,
     panelVisible: true, panelLocked: false,
   },
@@ -516,6 +518,17 @@ app.delete('/api/widgets/:id', basicAuth, (req, res) => {
   S.widgets.splice(idx, 1);
   saveConfig();
   broadcast({ type: 'widget_delete', id: req.params.id });
+  res.json({ ok: true });
+});
+
+// No auth — recent panel drag/resize
+app.post('/api/display/recent-position', (req, res) => {
+  const { x, y, w, h } = req.body || {};
+  if (typeof x === 'number') S.display.recentX = Math.round(x);
+  if (typeof y === 'number') S.display.recentY = Math.round(y);
+  if (typeof w === 'number') S.display.recentW = Math.round(w);
+  if (typeof h === 'number') S.display.recentH = Math.round(h);
+  saveConfig();
   res.json({ ok: true });
 });
 
