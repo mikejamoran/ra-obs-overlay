@@ -196,21 +196,25 @@ html, body {
 .resize-handle {
   position: absolute;
   bottom: 0; right: 0;
-  width: 16px; height: 16px;
+  width: 18px; height: 18px;
   cursor: nwse-resize;
   z-index: 99;
+  background: rgba(0,0,0,0.55);
+  border-radius: 4px 0 4px 0;
+  opacity: 0;
+  transition: opacity 0.15s;
 }
 .resize-handle::after {
   content: '';
   position: absolute;
   bottom: 3px; right: 3px;
-  width: 8px; height: 8px;
-  border-right: 2px solid rgba(255,255,255,0.35);
-  border-bottom: 2px solid rgba(255,255,255,0.35);
+  width: 9px; height: 9px;
+  border-right: 2px solid rgba(255,255,255,0.9);
+  border-bottom: 2px solid rgba(255,255,255,0.9);
   border-radius: 0 0 2px 0;
 }
-.widget:hover .resize-handle::after,
-#ach-widget:hover .resize-handle::after { border-color: rgba(255,255,255,0.6); }
+.widget:hover .resize-handle,
+#ach-widget:hover .resize-handle { opacity: 1; }
 
 /* ── Ticker ──────────────────────────────────────────────────────────────────── */
 #ticker { position: fixed; bottom: 6px; right: 8px; font-size: 10px; color: rgba(255,255,255,0.15); pointer-events: none; }
