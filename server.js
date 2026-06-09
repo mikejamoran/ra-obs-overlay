@@ -1,12 +1,15 @@
 'use strict';
 
+try { require('dotenv').config(); } catch {}
+
 const express = require('express');
 const fs      = require('fs');
 const path    = require('path');
 const https   = require('https');
+const crypto  = require('crypto');
 
 const app  = express();
-const PORT = 7890;
+const PORT = parseInt(process.env.PORT || '7890');
 
 const CONFIG_FILE = path.join(__dirname, 'overlay_config.json');
 const RA_BASE     = 'https://retroachievements.org/API';
@@ -57,14 +60,59 @@ let S = {
 // ── Config persistence ──────────────────────────────────────────────────────────
 
 function loadConfig() {
-  if (!fs.existsSync(CONFIG_FILE)) return;
-  try {
-    const saved = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-    if (saved.creds)   Object.assign(S.creds,   saved.creds);
-    if (saved.display) Object.assign(S.display, saved.display);
-    if (saved.gameId)  S.gameId = saved.gameId;
-  } catch (e) { console.error('[config] Load error:', e.message); }
+  if (fs.existsSync(CONFIG_FILE)) {
+    try {
+      const saved = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+      if (saved.creds)   Object.assign(S.creds,   saved.creds);
+      if (saved.display) Object.assign(S.display, saved.display);
+      if (saved.gameId)  S.gameId = saved.gameId;
+    } catch (e) { console.error('[config] Load error:', e.message); }
+  }
+  // Env vars override file credentials (safe for server deployment)
+  if (process.env.RA_USERNAME) S.creds.username = process.env.RA_USERNAME;
+  if (process.env.RA_API_KEY)  S.creds.api_key  = process.env.RA_API_KEY;
 }
+
+// ── Basic auth (protects setup page; overlay poll endpoint stays public) ────────
+
+function safeEqual(a, b) {
+  const ba = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ba.length !== bb.length) { crypto.timingSafeEqual(ba, ba); return false; }
+  return crypto.timingSafeEqual(ba, bb);
+}
+
+function basicAuth(req, res, next) {
+  const envUser = process.env.SETUP_USER || '';
+  const envPass = process.env.SETUP_PASS || '';
+  if (!envUser || !envPass) return next();
+
+  const authHeader = req.headers.authorization || '';
+  if (!authHeader.startsWith('Basic ')) {
+    res.set('WWW-Authenticate', 'Basic realm="RA Overlay Setup"');
+    return res.status(401).send('Authentication required');
+  }
+
+  let reqUser = '', reqPass = '';
+  try {
+    const decoded = Buffer.from(authHeader.slice(6), 'base64').toString('utf8');
+    const colon = decoded.indexOf(':');
+    reqUser = colon >= 0 ? decoded.slice(0, colon) : decoded;
+    reqPass = colon >= 0 ? decoded.slice(colon + 1) : '';
+  } catch {
+    res.set('WWW-Authenticate', 'Basic realm="RA Overlay Setup"');
+    return res.status(401).send('Invalid authorization header');
+  }
+
+  if (!safeEqual(reqUser, envUser) || !safeEqual(reqPass, envPass)) {
+    res.set('WWW-Authenticate', 'Basic realm="RA Overlay Setup"');
+    return res.status(401).send('Invalid credentials');
+  }
+
+  next();
+}
+
+// ───────────────────────────────────────────────────────────────────────────────
 
 function saveConfig() {
   try {
@@ -193,11 +241,11 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // ── Routes ──────────────────────────────────────────────────────────────────────
 
-app.get('/',    (_, res) => res.sendFile(path.join(__dirname, 'public', 'setup.html')));
-app.get('/obs', (_, res) => res.sendFile(path.join(__dirname, 'public', 'overlay.html')));
+app.get('/',    basicAuth, (_, res) => res.sendFile(path.join(__dirname, 'public', 'setup.html')));
+app.get('/obs',           (_, res) => res.sendFile(path.join(__dirname, 'public', 'overlay.html')));
 
 // Validate credentials and store them
-app.post('/api/connect', async (req, res) => {
+app.post('/api/connect', basicAuth, async (req, res) => {
   const raw = req.body || {};
   const username = (raw.username || '').trim();
   const api_key  = (raw.api_key  || '').trim();
@@ -227,7 +275,7 @@ app.post('/api/connect', async (req, res) => {
 });
 
 // Recently played games list
-app.get('/api/games', async (req, res) => {
+app.get('/api/games', basicAuth, async (req, res) => {
   if (!S.connected) return res.status(401).json({ error: 'Not connected' });
   try {
     const games = await raGet('API_GetUserRecentlyPlayedGames.php',
@@ -237,7 +285,7 @@ app.get('/api/games', async (req, res) => {
 });
 
 // Select active game
-app.post('/api/select-game', (req, res) => {
+app.post('/api/select-game', basicAuth, (req, res) => {
   const { game_id, save } = req.body || {};
   if (!game_id) return res.status(400).json({ ok: false, error: 'game_id required' });
   const gid = parseInt(game_id);
@@ -270,12 +318,12 @@ app.get('/api/state', (req, res) => {
 });
 
 // Achievement list for setup page pin selector
-app.get('/api/achievements', (req, res) => {
+app.get('/api/achievements', basicAuth, (req, res) => {
   res.json({ achievements: S.achievements, gameInfo: S.gameInfo, display: S.display });
 });
 
 // Restore saved config for setup page on load
-app.get('/api/config', (req, res) => {
+app.get('/api/config', basicAuth, (req, res) => {
   res.json({
     username:  S.creds.username,
     hasApiKey: !!S.creds.api_key,
@@ -288,7 +336,7 @@ app.get('/api/config', (req, res) => {
 });
 
 // Update display settings (partial update supported)
-app.post('/api/display', (req, res) => {
+app.post('/api/display', basicAuth, (req, res) => {
   const body = req.body || {};
   Object.assign(S.display, body);
   saveConfig();
@@ -296,7 +344,7 @@ app.post('/api/display', (req, res) => {
 });
 
 // Force an immediate achievement refresh
-app.post('/api/refresh', (req, res) => {
+app.post('/api/refresh', basicAuth, (req, res) => {
   if (!S.gameId || !S.connected)
     return res.status(400).json({ ok: false, error: 'No game selected' });
   S.lastAchRefresh = 0;
@@ -316,12 +364,13 @@ if (S.creds.username && S.creds.api_key) {
   }
 }
 
-app.listen(PORT, 'localhost', () => {
+app.listen(PORT, () => {
+  const local = `http://localhost:${PORT}`;
   console.log('\n  ┌─────────────────────────────────────────┐');
   console.log('  │   RA Achievement Overlay                │');
   console.log('  ├─────────────────────────────────────────┤');
-  console.log(`  │  Setup:   http://localhost:${PORT}/        │`);
-  console.log(`  │  OBS URL: http://localhost:${PORT}/obs     │`);
+  console.log(`  │  Setup:   ${local}/        │`);
+  console.log(`  │  OBS URL: ${local}/obs     │`);
   console.log('  └─────────────────────────────────────────┘');
   console.log('\n  Press Ctrl+C to stop\n');
 });

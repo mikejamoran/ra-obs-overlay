@@ -4,7 +4,7 @@
     "api_key": "WgLJKSXrfLhR8xBduAuKFGHvpAx15nMI"
   },
   "display": {
-    "mode": "both",
+    "mode": "tiles",
     "filter": "unearned",
     "bgColor": "#0d0d0d",
     "bgOpacity": 0.88,

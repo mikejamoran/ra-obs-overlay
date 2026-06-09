@@ -278,12 +278,10 @@ input[type=color] {
 
   <div class="sb-section">
     <label>OBS Browser Source URL</label>
-    <div class="obs-url-box" id="obsUrl" title="Click to copy">
-      http://localhost:7890/obs
-    </div>
+    <div class="obs-url-box" id="obsUrl" title="Click to copy"></div>
     <button class="btn-copy" onclick="copyOBSUrl()">⎘ Copy URL</button>
     <button class="btn-copy" style="margin-top:4px"
-            onclick="window.open('http://localhost:7890/obs','_blank')">
+            onclick="window.open(obsOverlayUrl(),'_blank')">
       ↗ Open Preview in Browser
     </button>
   </div>
@@ -574,6 +572,7 @@ let gameList  = [];
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 async function init() {
+  document.getElementById('obsUrl').textContent = obsOverlayUrl();
   try {
     const cfg = await api('/api/config');
     if (cfg.username) {
@@ -857,8 +856,12 @@ async function forceRefresh() {
   } catch(e) {}
 }
 
+function obsOverlayUrl() {
+  return window.location.origin + '/obs';
+}
+
 function copyOBSUrl() {
-  navigator.clipboard.writeText('http://localhost:7890/obs').then(() => {
+  navigator.clipboard.writeText(obsOverlayUrl()).then(() => {
     const btn = document.querySelector('.btn-copy');
     btn.textContent = '✓ Copied!';
     setTimeout(() => btn.textContent = '⎘ Copy URL', 2000);

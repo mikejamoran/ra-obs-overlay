@@ -104,3 +104,56 @@ node server.js
 ```
 
 Or use Task Scheduler / PM2 for a background service.
+
+---
+
+## Deploying to a remote server (AWS / DreamHost VPS)
+
+This turns the overlay into a persistent hosted service — your OBS browser source points at your domain instead of localhost.
+
+### 1. Clone and configure
+
+```bash
+git clone <your-repo> ra-obs-overlay
+cd ra-obs-overlay
+npm install
+cp .env.example .env
+```
+
+Edit `.env`:
+```
+RA_USERNAME=yourusername
+RA_API_KEY=yourkey
+SETUP_USER=admin
+SETUP_PASS=a-strong-password
+PORT=7890
+```
+
+### 2. Run with PM2
+
+```bash
+npm install -g pm2
+pm2 start ecosystem.config.js
+pm2 save
+pm2 startup   # follow the printed command to auto-start on reboot
+```
+
+### 3. nginx + HTTPS
+
+Install nginx and certbot, then:
+
+```bash
+sudo cp nginx.conf.example /etc/nginx/sites-available/ra-overlay
+# Edit the file — replace yourdomain.com with your actual domain
+sudo ln -s /etc/nginx/sites-available/ra-overlay /etc/nginx/sites-enabled/
+sudo certbot --nginx -d yourdomain.com
+sudo systemctl reload nginx
+```
+
+### 4. In OBS
+
+The setup page at `https://yourdomain.com/` will now show your actual domain URL
+in the OBS Browser Source box. Copy it and add it to OBS as normal.
+
+The overlay URL (`/obs`) is public — no password needed for OBS to load it.  
+The setup page (`/`) requires the username/password from your `.env`.
