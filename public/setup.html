@@ -267,6 +267,34 @@ input[type=color] {
 .upload-thumb-del { position: absolute; top: 2px; right: 2px; background: rgba(0,0,0,0.7); border: none; border-radius: 3px; color: var(--error); font-size: 12px; cursor: pointer; padding: 1px 4px; line-height: 1.4; }
 .upload-thumb-name { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.65); font-size: 9px; color: #fff; padding: 2px 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+.upload-thumb.audio { display: flex; align-items: center; justify-content: center; font-size: 24px; cursor: pointer; }
+
+/* Media folders */
+.media-folder-row { display: flex; align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; font-size: 13px; }
+.media-folder-row .path { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+
+/* Media picker modal */
+.media-picker { position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 1000; display: flex; align-items: center; justify-content: center; }
+.media-picker.hidden { display: none; }
+.media-picker-box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; width: min(640px, 92vw); max-height: 80vh; display: flex; flex-direction: column; }
+.media-picker-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.media-picker-grid { padding: 16px; overflow-y: auto; display: flex; flex-wrap: wrap; gap: 10px; align-content: flex-start; }
+.media-item { width: 110px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); cursor: pointer; overflow: hidden; }
+.media-item:hover { border-color: var(--accent); }
+.media-item img, .media-item video { width: 100%; height: 76px; object-fit: cover; display: block; }
+.media-item .audio-icon { height: 76px; display: flex; align-items: center; justify-content: center; font-size: 28px; }
+.media-item .media-name { font-size: 10px; color: var(--muted); padding: 4px 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.media-item .media-src-label { font-size: 9px; color: var(--accent); padding: 0 6px 4px; }
+.media-preview-btn { background: var(--accent); border: none; border-radius: 4px; color: #fff; font-size: 11px; cursor: pointer; padding: 2px 8px; margin: 0 6px 6px; }
+
+/* Trigger rows */
+.trigger-type-badge { font-size: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 1px 8px; color: var(--muted); white-space: nowrap; }
+.action-section { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 10px; }
+.action-section.off .action-fields { display: none; }
+.action-section-title { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; }
+.media-src-row { display: flex; gap: 8px; align-items: flex-end; }
+.media-src-row .field { flex: 1; }
+
 /* Divider */
 .divider { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
 
@@ -326,7 +354,8 @@ input[type=color] {
     <label>Widgets &amp; Layers</label>
     <a href="#card-widgets" class="btn btn-sm" style="display:block;width:100%;text-align:center;margin-bottom:6px">⚙ Manage Widgets</a>
     <a href="/control" target="_blank" class="btn btn-sm" style="display:block;width:100%;text-align:center;margin-bottom:6px">🎮 Control Panel ↗</a>
-    <a href="#card-twitch" class="btn btn-sm" style="display:block;width:100%;text-align:center">🟣 Twitch Chat</a>
+    <a href="#card-twitch" class="btn btn-sm" style="display:block;width:100%;text-align:center;margin-bottom:6px">🟣 Twitch Chat</a>
+    <a href="#card-alerts" class="btn btn-sm" style="display:block;width:100%;text-align:center">🔔 Alerts &amp; Triggers</a>
   </div>
 
   <div class="sb-bottom">
@@ -667,14 +696,32 @@ input[type=color] {
       <!-- Dynamic widget layers injected here by JS -->
       <div id="widgetLayers"></div>
 
-      <!-- Uploads manager -->
+      <!-- Media library -->
       <div style="margin-top:24px">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em">Uploaded Files</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em">Media Library — Uploaded Files</div>
         <div id="uploadGrid" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px"></div>
         <label class="btn btn-sm" style="cursor:pointer">
-          + Upload Image / GIF
-          <input type="file" accept=".png,.jpg,.jpeg,.gif,.webp,.svg" style="display:none" onchange="uploadFile(this)">
+          + Upload Image / GIF / Sound
+          <input type="file" accept=".png,.jpg,.jpeg,.gif,.webp,.svg,.mp3,.ogg,.wav,.webm" style="display:none" onchange="uploadFile(this)">
         </label>
+      </div>
+
+      <!-- Local media folders -->
+      <div style="margin-top:24px">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em">Media Library — Local Folders</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.6">
+          Use sounds and images already on the server's drive without uploading. Files in these folders
+          become available to alerts and widgets (read-only, top-level files only).
+        </div>
+        <div id="mediaFolderList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px"></div>
+        <div class="field-row">
+          <div class="field" style="flex:2"><label>Folder path on server</label>
+            <input type="text" id="newFolderPath" placeholder="/home/user/sounds"></div>
+          <div class="field"><label>Label (optional)</label>
+            <input type="text" id="newFolderLabel" placeholder="My Sounds"></div>
+        </div>
+        <button class="btn btn-sm" style="margin-top:8px" onclick="addMediaFolder()">+ Add Folder</button>
+        <div id="folderError" class="banner error hidden" style="margin-top:8px"></div>
       </div>
 
     </div>
@@ -728,7 +775,56 @@ TWITCH_CLIENT_SECRET=paste_secret_here</pre>
     </div>
   </div>
 
+  <!-- ── Alerts & Triggers ───────────────────────────────────────────────────── -->
+  <div class="card" id="card-alerts">
+    <div class="card-header">
+      <h2>9 · Alerts &amp; Triggers</h2>
+      <span class="tag" id="triggersTag">0 triggers</span>
+    </div>
+    <div class="card-body">
+      <div id="reauthBanner" class="banner error hidden">
+        Your Twitch connection is missing permissions that alerts need.
+        <a href="/auth/twitch" style="color:inherit;font-weight:700">Reconnect with Twitch →</a>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.7">
+        Fire image / sound / text alerts on the overlay from Twitch events.
+        Alerts queue and play one at a time — skip, clear and test them from the
+        <a href="/control" target="_blank">Control Panel ↗</a>.
+        Channel points, subs, raids and follows need the expanded Twitch connection above;
+        bits and chat commands work with the basic chat connection.
+      </div>
+
+      <div style="margin-bottom:16px">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em">Add Trigger</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <button class="btn btn-sm" onclick="addTrigger('channel_points')">🎁 Channel Points</button>
+          <button class="btn btn-sm" onclick="addTrigger('cheer')">💎 Bits</button>
+          <button class="btn btn-sm" onclick="addTrigger('chat_command')">❗ Chat Command</button>
+          <button class="btn btn-sm" onclick="addTrigger('subscription')">⭐ Subscription</button>
+          <button class="btn btn-sm" onclick="addTrigger('raid')">🚀 Raid</button>
+          <button class="btn btn-sm" onclick="addTrigger('follow')">💜 Follow</button>
+        </div>
+      </div>
+
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em">Triggers</div>
+      <div id="triggerList" style="display:flex;flex-direction:column;gap:4px">
+        <div style="font-size:13px;color:var(--muted);padding:8px 0">No triggers yet — add one above.</div>
+      </div>
+    </div>
+  </div>
+
 </main>
+</div>
+
+<!-- ── Media picker modal ─────────────────────────────────────────────────────── -->
+<div id="mediaPicker" class="media-picker hidden" onclick="if(event.target===this)closeMediaPicker()">
+  <div class="media-picker-box">
+    <div class="media-picker-header">
+      <span id="mediaPickerTitle" style="font-weight:700;font-size:14px">Choose media</span>
+      <button class="btn btn-sm" onclick="closeMediaPicker()">✕ Close</button>
+    </div>
+    <div id="mediaPickerGrid" class="media-picker-grid"></div>
+  </div>
 </div>
 
 <script>
@@ -1464,13 +1560,26 @@ function renderUploadGrid(files) {
   grid.innerHTML = '';
   for (const f of files) {
     const thumb = document.createElement('div');
-    thumb.className = 'upload-thumb';
-    thumb.title = f.filename;
-    thumb.innerHTML = `<img src="${escHtml(f.src)}" loading="lazy" alt="">
+    thumb.className = 'upload-thumb' + (f.kind === 'audio' ? ' audio' : '');
+    thumb.title = f.filename + (f.kind === 'audio' ? ' (click to preview)' : '');
+    const preview = f.kind === 'audio'
+      ? '🔊'
+      : (f.kind === 'video'
+          ? `<video src="${escHtml(f.src)}" muted></video>`
+          : `<img src="${escHtml(f.src)}" loading="lazy" alt="">`);
+    thumb.innerHTML = `${preview}
       <div class="upload-thumb-name">${escHtml(f.filename)}</div>
-      <button class="upload-thumb-del" onclick="deleteUpload('${escHtml(f.filename)}',this.closest('.upload-thumb'))">×</button>`;
+      <button class="upload-thumb-del" onclick="event.stopPropagation();deleteUpload('${escHtml(f.filename)}',this.closest('.upload-thumb'))">×</button>`;
+    if (f.kind === 'audio') thumb.onclick = () => previewAudio(f.src);
     grid.appendChild(thumb);
   }
+}
+
+let previewPlayer = null;
+function previewAudio(src) {
+  if (previewPlayer) { previewPlayer.pause(); previewPlayer = null; }
+  previewPlayer = new Audio(src);
+  previewPlayer.play().catch(() => {});
 }
 
 async function uploadFile(input) {
@@ -1490,6 +1599,417 @@ async function deleteUpload(filename, thumbEl) {
   if (!confirm('Delete ' + filename + '?')) return;
   await api('/api/uploads/' + filename, 'DELETE');
   thumbEl?.remove();
+}
+
+// ── Media folders ─────────────────────────────────────────────────────────────
+
+async function loadMediaFolders() {
+  try {
+    const { folders } = await api('/api/media/folders');
+    const list = document.getElementById('mediaFolderList');
+    list.innerHTML = (folders || []).map(f => `
+      <div class="media-folder-row">
+        <span>📁</span>
+        <strong>${escHtml(f.label)}</strong>
+        <span class="path">${escHtml(f.path)}</span>
+        <button class="layer-btn danger" title="Remove (files are not deleted)" onclick="deleteMediaFolder('${f.id}')">🗑</button>
+      </div>`).join('') ||
+      '<div style="font-size:13px;color:var(--muted)">No folders added.</div>';
+  } catch {}
+}
+
+async function addMediaFolder() {
+  const path  = document.getElementById('newFolderPath').value.trim();
+  const label = document.getElementById('newFolderLabel').value.trim();
+  document.getElementById('folderError').classList.add('hidden');
+  if (!path) return;
+  const res = await api('/api/media/folders', 'POST', { path, label });
+  if (res.error) { showError('folderError', res.error); return; }
+  document.getElementById('newFolderPath').value = '';
+  document.getElementById('newFolderLabel').value = '';
+  loadMediaFolders();
+}
+
+async function deleteMediaFolder(id) {
+  if (!confirm('Remove this folder from the media library? (No files are deleted.)')) return;
+  await api('/api/media/folders/' + id, 'DELETE');
+  loadMediaFolders();
+}
+
+// ── Media picker ──────────────────────────────────────────────────────────────
+
+let mediaPickerCallback = null;
+
+async function openMediaPicker(kinds, cb) {
+  mediaPickerCallback = cb;
+  document.getElementById('mediaPickerTitle').textContent =
+    kinds.includes('audio') ? 'Choose a sound' : 'Choose an image';
+  const grid = document.getElementById('mediaPickerGrid');
+  grid.innerHTML = '<div style="color:var(--muted);font-size:13px">Loading…</div>';
+  document.getElementById('mediaPicker').classList.remove('hidden');
+  try {
+    const { media } = await api('/api/media');
+    const items = (media || []).filter(m => kinds.includes(m.kind));
+    if (!items.length) {
+      grid.innerHTML = '<div style="color:var(--muted);font-size:13px">Nothing found — upload files or add a local folder in the Widgets card.</div>';
+      return;
+    }
+    grid.innerHTML = '';
+    for (const m of items) {
+      const el = document.createElement('div');
+      el.className = 'media-item';
+      const preview = m.kind === 'audio'
+        ? '<div class="audio-icon">🔊</div>'
+        : (m.kind === 'video'
+            ? `<video src="${escHtml(m.src)}" muted></video>`
+            : `<img src="${escHtml(m.src)}" loading="lazy" alt="">`);
+      el.innerHTML = `${preview}
+        <div class="media-name" title="${escHtml(m.name)}">${escHtml(m.name)}</div>
+        <div class="media-src-label">${m.source === 'folder' ? '📁 ' + escHtml(m.folderLabel || 'folder') : '⬆ upload'}</div>` +
+        (m.kind === 'audio' ? '<button class="media-preview-btn">▶ Preview</button>' : '');
+      el.onclick = e => {
+        if (e.target.className === 'media-preview-btn') { previewAudio(m.src); return; }
+        closeMediaPicker();
+        if (mediaPickerCallback) mediaPickerCallback(m.src);
+      };
+      grid.appendChild(el);
+    }
+  } catch {
+    grid.innerHTML = '<div style="color:var(--error);font-size:13px">Failed to load media.</div>';
+  }
+}
+
+function closeMediaPicker() {
+  document.getElementById('mediaPicker').classList.add('hidden');
+  if (previewPlayer) { previewPlayer.pause(); previewPlayer = null; }
+}
+
+// ── Alerts & Triggers ─────────────────────────────────────────────────────────
+
+let triggerList = [];
+
+const TRIGGER_ICONS = {
+  channel_points: '🎁', cheer: '💎', chat_command: '❗',
+  subscription: '⭐', raid: '🚀', follow: '💜',
+};
+const TRIGGER_TYPE_NAMES = {
+  channel_points: 'Channel Points', cheer: 'Bits', chat_command: 'Chat Command',
+  subscription: 'Subscription', raid: 'Raid', follow: 'Follow',
+};
+const TRIGGER_DEFAULT_TEMPLATES = {
+  channel_points: '{user} redeemed {reward}!',
+  cheer:          '{user} cheered {amount} bits!',
+  chat_command:   '{user} triggered an alert!',
+  subscription:   '{user} just subscribed!',
+  raid:           '{user} is raiding with {viewers} viewers!',
+  follow:         '{user} just followed!',
+};
+const TEMPLATE_HINTS = {
+  channel_points: '{user} {reward} {message} {channel}',
+  cheer:          '{user} {amount} {message} {channel}',
+  chat_command:   '{user} {message} {channel}',
+  subscription:   '{user} {tier} {amount} {message} {channel}',
+  raid:           '{user} {viewers} {channel}',
+  follow:         '{user} {channel}',
+};
+
+async function loadTriggers() {
+  try {
+    const res = await api('/api/triggers');
+    triggerList = res.triggers || [];
+    renderTriggerList();
+  } catch {}
+}
+
+async function addTrigger(type) {
+  const name = TRIGGER_TYPE_NAMES[type] + ' Alert';
+  const res = await api('/api/triggers', 'POST', {
+    name,
+    source: { type, command: type === 'chat_command' ? '!alert' : '' },
+    actions: { text: { enabled: true, template: TRIGGER_DEFAULT_TEMPLATES[type] } },
+  });
+  if (res.trigger) {
+    triggerList.push(res.trigger);
+    renderTriggerList();
+    toggleLayerSettings('ts-' + res.trigger.id);
+  }
+}
+
+async function deleteTrigger(id) {
+  if (!confirm('Delete this trigger?')) return;
+  await api('/api/triggers/' + id, 'DELETE');
+  triggerList = triggerList.filter(t => t.id !== id);
+  renderTriggerList();
+}
+
+async function updateTrigger(id, patch) {
+  const t = triggerList.find(t => t.id === id);
+  if (!t) return;
+  const res = await api('/api/triggers/' + id, 'PUT', patch);
+  if (res.trigger) {
+    const idx = triggerList.findIndex(x => x.id === id);
+    triggerList[idx] = res.trigger;
+  }
+}
+
+async function testTrigger(id) {
+  await api('/api/triggers/' + id + '/test', 'POST');
+}
+
+function renderTriggerList() {
+  const container = document.getElementById('triggerList');
+  container.innerHTML = '';
+  document.getElementById('triggersTag').textContent =
+    triggerList.length + ' trigger' + (triggerList.length !== 1 ? 's' : '');
+  if (!triggerList.length) {
+    container.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:8px 0">No triggers yet — add one above.</div>';
+    return;
+  }
+  for (const t of triggerList) container.appendChild(buildTriggerRow(t));
+}
+
+function buildTriggerRow(t) {
+  const wrap = document.createElement('div');
+  const row = document.createElement('div');
+  row.className = 'layer-row';
+  row.innerHTML = `
+    <span class="layer-icon">${TRIGGER_ICONS[t.source.type] || '🔔'}</span>
+    <span class="layer-label">${escHtml(t.name)}</span>
+    <span class="trigger-type-badge">${TRIGGER_TYPE_NAMES[t.source.type] || t.source.type}</span>
+    <div class="layer-actions">
+      <button class="layer-btn ${t.enabled ? 'active' : ''}" title="Enable/disable"
+        onclick="toggleTriggerEnabled('${t.id}',this)">${t.enabled ? '🟢' : '⚪'}</button>
+      <button class="layer-btn" title="Test this alert" onclick="testTrigger('${t.id}')">▶</button>
+      <button class="layer-btn layer-edit-btn" title="Settings" onclick="toggleLayerSettings('ts-${t.id}')">⚙</button>
+      <button class="layer-btn danger" title="Delete" onclick="deleteTrigger('${t.id}')">🗑</button>
+    </div>`;
+  wrap.appendChild(row);
+
+  const settings = document.createElement('div');
+  settings.className = 'layer-settings';
+  settings.id = 'ts-' + t.id;
+  settings.appendChild(buildTriggerSettings(t));
+  wrap.appendChild(settings);
+  return wrap;
+}
+
+async function toggleTriggerEnabled(id, btn) {
+  const t = triggerList.find(t => t.id === id);
+  if (!t) return;
+  await updateTrigger(id, { enabled: !t.enabled });
+  renderTriggerList();
+}
+
+function buildTriggerSettings(t) {
+  const s = t.source, a = t.actions;
+  const el = document.createElement('div');
+
+  // Name
+  let html = `
+    <div class="field" style="margin-bottom:12px"><label>Trigger name</label>
+      <input type="text" value="${escHtml(t.name)}" oninput="updateTrigger('${t.id}',{name:this.value})"></div>`;
+
+  // Source fields
+  html += `<div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">When — ${TRIGGER_TYPE_NAMES[s.type]}</div>`;
+  if (s.type === 'channel_points') {
+    html += `
+      <div class="field-row">
+        <div class="field"><label>Reward name (exact, case-insensitive)</label>
+          <input type="text" value="${escHtml(s.rewardName || '')}" placeholder="Play a sound"
+            oninput="updateTrigger('${t.id}',{source:{rewardName:this.value}})"></div>
+        <div class="field"><label>Reward ID <span style="font-weight:400;color:var(--muted)">(optional, overrides name)</span></label>
+          <input type="text" value="${escHtml(s.rewardId || '')}"
+            oninput="updateTrigger('${t.id}',{source:{rewardId:this.value}})"></div>
+      </div>`;
+  } else if (s.type === 'cheer') {
+    html += `
+      <div class="field-row">
+        <div class="field"><label>Match</label>
+          <select onchange="updateTrigger('${t.id}',{source:{matchType:this.value}})" style="width:100%;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text)">
+            <option value="min"${s.matchType !== 'exact' ? ' selected' : ''}>At least this many bits</option>
+            <option value="exact"${s.matchType === 'exact' ? ' selected' : ''}>Exactly this many bits</option>
+          </select></div>
+        <div class="field"><label>Bits</label>
+          <input type="number" min="1" value="${s.bits || 100}"
+            oninput="updateTrigger('${t.id}',{source:{bits:parseInt(this.value)||100}})"></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">
+        Create several bit triggers for tiers — the highest matching tier wins; exact matches beat tiers.
+      </div>`;
+  } else if (s.type === 'chat_command') {
+    html += `
+      <div class="field-row">
+        <div class="field"><label>Command</label>
+          <input type="text" value="${escHtml(s.command || '')}" placeholder="!hype"
+            oninput="updateTrigger('${t.id}',{source:{command:this.value}})"></div>
+        <div class="field"><label>Who can use it</label>
+          <select onchange="updateTrigger('${t.id}',{source:{permission:this.value}});document.getElementById('tcu-${t.id}').style.display=this.value==='custom'?'':'none'" style="width:100%;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text)">
+            ${Object.entries(PERMISSION_NAMES).map(([v, l]) => `<option value="${v}"${s.permission === v ? ' selected' : ''}>${l}</option>`).join('')}
+          </select></div>
+      </div>
+      <div class="field" id="tcu-${t.id}" style="${s.permission === 'custom' ? '' : 'display:none'}">
+        <label>Allowed usernames (comma-separated)</label>
+        <input type="text" value="${escHtml(s.allowedUsers || '')}"
+          oninput="updateTrigger('${t.id}',{source:{allowedUsers:this.value}})">
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Global cooldown (seconds)</label>
+          <input type="number" min="0" value="${s.cooldownGlobalSec || 0}"
+            oninput="updateTrigger('${t.id}',{source:{cooldownGlobalSec:parseInt(this.value)||0}})"></div>
+        <div class="field"><label>Per-user cooldown (seconds)</label>
+          <input type="number" min="0" value="${s.cooldownUserSec || 0}"
+            oninput="updateTrigger('${t.id}',{source:{cooldownUserSec:parseInt(this.value)||0}})"></div>
+      </div>`;
+  } else if (s.type === 'subscription') {
+    html += `
+      <div class="field-row">
+        <div class="field"><label>Tier</label>
+          <select onchange="updateTrigger('${t.id}',{source:{tier:this.value}})" style="width:100%;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text)">
+            <option value="any"${s.tier === 'any' ? ' selected' : ''}>Any tier</option>
+            <option value="1000"${s.tier === '1000' ? ' selected' : ''}>Tier 1</option>
+            <option value="2000"${s.tier === '2000' ? ' selected' : ''}>Tier 2</option>
+            <option value="3000"${s.tier === '3000' ? ' selected' : ''}>Tier 3</option>
+          </select></div>
+      </div>
+      <label class="check-opt ${s.includeResubs ? 'active' : ''}" style="width:fit-content;margin-bottom:6px">
+        <input type="checkbox" ${s.includeResubs ? 'checked' : ''}
+          onchange="updateTrigger('${t.id}',{source:{includeResubs:this.checked}});this.closest('.check-opt').classList.toggle('active',this.checked)">
+        Include resubs
+      </label>
+      <label class="check-opt ${s.includeGifts ? 'active' : ''}" style="width:fit-content;margin-bottom:8px">
+        <input type="checkbox" ${s.includeGifts ? 'checked' : ''}
+          onchange="updateTrigger('${t.id}',{source:{includeGifts:this.checked}});this.closest('.check-opt').classList.toggle('active',this.checked)">
+        Include gifted subs
+      </label>`;
+  } else if (s.type === 'raid') {
+    html += `
+      <div class="field"><label>Minimum viewers</label>
+        <input type="number" min="0" value="${s.minViewers || 0}"
+          oninput="updateTrigger('${t.id}',{source:{minViewers:parseInt(this.value)||0}})"></div>`;
+  } else if (s.type === 'follow') {
+    html += `<div style="font-size:12px;color:var(--muted);margin-bottom:8px">Fires for every new follower.</div>`;
+  }
+
+  html += `<hr class="divider"><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Then — show / play</div>`;
+
+  // Text action
+  html += `
+    <div class="action-section ${a.text.enabled ? '' : 'off'}" id="as-text-${t.id}">
+      <label class="action-section-title">
+        <input type="checkbox" ${a.text.enabled ? 'checked' : ''}
+          onchange="updateTrigger('${t.id}',{actions:{text:{enabled:this.checked}}});document.getElementById('as-text-${t.id}').classList.toggle('off',!this.checked)">
+        📝 Text
+      </label>
+      <div class="action-fields" style="margin-top:10px">
+        <div class="field"><label>Message template</label>
+          <input type="text" value="${escHtml(a.text.template || '')}"
+            oninput="updateTrigger('${t.id}',{actions:{text:{template:this.value}}})">
+          <div style="font-size:11px;color:var(--muted);margin-top:5px">Variables: <code>${TEMPLATE_HINTS[s.type]}</code></div>
+        </div>
+        <div class="field-row" style="margin-top:8px">
+          <div class="field"><label>Font size (px)</label>
+            <input type="number" min="10" value="${a.text.fontSize || 32}"
+              oninput="updateTrigger('${t.id}',{actions:{text:{fontSize:parseInt(this.value)||32}}})"></div>
+          <div class="field"><label>Text color</label>
+            <input type="color" value="${a.text.color || '#e6edf3'}"
+              oninput="updateTrigger('${t.id}',{actions:{text:{color:this.value}}})"></div>
+          <div class="field"><label>Background</label>
+            <input type="color" value="${a.text.bgColor || '#0d0d0d'}"
+              oninput="updateTrigger('${t.id}',{actions:{text:{bgColor:this.value}}})"></div>
+          <div class="field"><label>BG opacity</label>
+            <input type="number" min="0" max="1" step="0.05" value="${a.text.bgOpacity ?? 0.85}"
+              oninput="updateTrigger('${t.id}',{actions:{text:{bgOpacity:parseFloat(this.value)}}})"></div>
+        </div>
+      </div>
+    </div>`;
+
+  // Image action
+  html += `
+    <div class="action-section ${a.image.enabled ? '' : 'off'}" id="as-img-${t.id}">
+      <label class="action-section-title">
+        <input type="checkbox" ${a.image.enabled ? 'checked' : ''}
+          onchange="updateTrigger('${t.id}',{actions:{image:{enabled:this.checked}}});document.getElementById('as-img-${t.id}').classList.toggle('off',!this.checked)">
+        🖼 Image / GIF / WebM
+      </label>
+      <div class="action-fields" style="margin-top:10px">
+        <div class="media-src-row">
+          <div class="field"><label>File</label>
+            <input type="text" id="img-src-${t.id}" value="${escHtml(a.image.src || '')}" placeholder="/uploads/… or /media/…"
+              oninput="updateTrigger('${t.id}',{actions:{image:{src:this.value}}})"></div>
+          <button class="btn btn-sm" onclick="openMediaPicker(['image','video'],src=>{document.getElementById('img-src-${t.id}').value=src;updateTrigger('${t.id}',{actions:{image:{src}}})})">Choose…</button>
+        </div>
+        <div class="field-row" style="margin-top:8px">
+          <div class="field"><label>Width (px)</label>
+            <input type="number" min="20" value="${a.image.widthPx || 300}"
+              oninput="updateTrigger('${t.id}',{actions:{image:{widthPx:parseInt(this.value)||300}}})"></div>
+          <div class="field"><label>Fit</label>
+            <select onchange="updateTrigger('${t.id}',{actions:{image:{fit:this.value}}})" style="width:100%;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text)">
+              <option value="contain"${a.image.fit !== 'cover' ? ' selected' : ''}>Contain</option>
+              <option value="cover"${a.image.fit === 'cover' ? ' selected' : ''}>Cover</option>
+            </select></div>
+        </div>
+      </div>
+    </div>`;
+
+  // Audio action
+  html += `
+    <div class="action-section ${a.audio.enabled ? '' : 'off'}" id="as-aud-${t.id}">
+      <label class="action-section-title">
+        <input type="checkbox" ${a.audio.enabled ? 'checked' : ''}
+          onchange="updateTrigger('${t.id}',{actions:{audio:{enabled:this.checked}}});document.getElementById('as-aud-${t.id}').classList.toggle('off',!this.checked)">
+        🔊 Sound
+      </label>
+      <div class="action-fields" style="margin-top:10px">
+        <div class="media-src-row">
+          <div class="field"><label>File</label>
+            <input type="text" id="aud-src-${t.id}" value="${escHtml(a.audio.src || '')}" placeholder="/uploads/… or /media/…"
+              oninput="updateTrigger('${t.id}',{actions:{audio:{src:this.value}}})"></div>
+          <button class="btn btn-sm" onclick="openMediaPicker(['audio'],src=>{document.getElementById('aud-src-${t.id}').value=src;updateTrigger('${t.id}',{actions:{audio:{src}}})})">Choose…</button>
+        </div>
+        <div class="field" style="margin-top:8px;max-width:160px"><label>Volume (0–1)</label>
+          <input type="number" min="0" max="1" step="0.05" value="${a.audio.volume ?? 0.8}"
+            oninput="updateTrigger('${t.id}',{actions:{audio:{volume:parseFloat(this.value)}}})"></div>
+        <div style="font-size:11px;color:var(--muted);margin-top:6px">
+          Tip: set the alert duration at least as long as the sound, or it gets cut off by the next alert.
+        </div>
+      </div>
+    </div>`;
+
+  // Duration / position / animation
+  const presets = ['top-left','top-center','top-right','center-left','center','center-right','bottom-left','bottom-center','bottom-right'];
+  html += `
+    <div class="field-row">
+      <div class="field"><label>Duration (seconds)</label>
+        <input type="number" min="0.5" step="0.5" value="${(a.durationMs || 6000) / 1000}"
+          oninput="updateTrigger('${t.id}',{actions:{durationMs:Math.round((parseFloat(this.value)||6)*1000)}})"></div>
+      <div class="field"><label>Position</label>
+        <select onchange="updateTrigger('${t.id}',{actions:{position:{mode:this.value==='custom'?'custom':'preset',preset:this.value==='custom'?'center':this.value}}});document.getElementById('tpos-${t.id}').style.display=this.value==='custom'?'':'none'" style="width:100%;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text)">
+          ${presets.map(p => `<option value="${p}"${a.position.mode !== 'custom' && a.position.preset === p ? ' selected' : ''}>${p.replace('-', ' ')}</option>`).join('')}
+          <option value="custom"${a.position.mode === 'custom' ? ' selected' : ''}>custom (x/y %)</option>
+        </select></div>
+    </div>
+    <div class="field-row" id="tpos-${t.id}" style="${a.position.mode === 'custom' ? '' : 'display:none'}">
+      <div class="field"><label>X (% of screen)</label>
+        <input type="number" min="0" max="100" value="${a.position.x ?? 50}"
+          oninput="updateTrigger('${t.id}',{actions:{position:{x:parseInt(this.value)||0}}})"></div>
+      <div class="field"><label>Y (% of screen)</label>
+        <input type="number" min="0" max="100" value="${a.position.y ?? 20}"
+          oninput="updateTrigger('${t.id}',{actions:{position:{y:parseInt(this.value)||0}}})"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Animation in</label>
+        <select onchange="updateTrigger('${t.id}',{actions:{animation:{in:this.value}}})" style="width:100%;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text)">
+          ${['fade','slide-up','slide-down','pop','none'].map(v => `<option value="${v}"${a.animation.in === v ? ' selected' : ''}>${v}</option>`).join('')}
+        </select></div>
+      <div class="field"><label>Animation out</label>
+        <select onchange="updateTrigger('${t.id}',{actions:{animation:{out:this.value}}})" style="width:100%;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text)">
+          ${['fade','none'].map(v => `<option value="${v}"${a.animation.out === v ? ' selected' : ''}>${v}</option>`).join('')}
+        </select></div>
+    </div>
+    <button class="btn btn-sm" style="margin-top:4px" onclick="testTrigger('${t.id}')">▶ Test this alert</button>`;
+
+  el.innerHTML = html;
+  return el;
 }
 
 // ── Twitch ────────────────────────────────────────────────────────────────────
@@ -1524,6 +2044,10 @@ async function initExtended(cfg) {
   if (cfg.twitch?.connected) {
     setTwitchConnected(true, cfg.twitch.channel);
   }
+  // Alerts need scopes the saved token may not have — prompt for re-auth
+  if (cfg.twitch?.needsReauth || (cfg.twitch?.missingScopes || []).length) {
+    document.getElementById('reauthBanner').classList.remove('hidden');
+  }
   // Achievement panel controls
   const visBtn  = document.getElementById('ach-vis-btn');
   const lockBtn = document.getElementById('ach-lock-btn');
@@ -1535,6 +2059,8 @@ async function initExtended(cfg) {
 
   await loadWidgets();
   await loadUploads();
+  await loadTriggers();
+  await loadMediaFolders();
 }
 
 init();

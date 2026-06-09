@@ -77,6 +77,20 @@ body { font-family: "Segoe UI", system-ui, sans-serif; background: var(--bg); co
 
 .empty { color: var(--muted); font-size: 14px; text-align: center; padding: 32px; }
 .badge { display: inline-block; background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 2px 10px; font-size: 11px; color: var(--muted); }
+
+/* Alerts */
+.alert-now { font-size: 14px; margin-bottom: 10px; color: var(--muted); }
+.alert-now b { color: var(--text); }
+.alert-queue-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.alert-queue-item { font-size: 13px; color: var(--muted); background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; }
+.alert-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.trigger-tests { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--border); padding-top: 12px; }
+.trigger-tests-title { font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+.trigger-test-row { display: flex; align-items: center; gap: 8px; }
+.trigger-test-row .name { flex: 1; font-size: 13px; }
+.trigger-test-row .name.disabled { color: var(--muted); text-decoration: line-through; }
+.test-btn { background: var(--accent); border: none; border-radius: 6px; padding: 6px 14px; color: #fff; font-size: 12px; cursor: pointer; }
+.test-btn:active { filter: brightness(0.85); }
 </style>
 </head>
 <body>
@@ -87,6 +101,27 @@ body { font-family: "Segoe UI", system-ui, sans-serif; background: var(--bg); co
     <div class="sub" id="ws-label">Connecting…</div>
   </div>
   <div class="ws-dot" id="ws-dot"></div>
+</div>
+
+<div class="content" style="padding-bottom: 0">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-icon">🔔</span><span class="card-title">Alerts</span>
+      <span class="badge card-label" id="alert-status">idle</span>
+    </div>
+    <div class="card-body">
+      <div class="alert-now" id="alert-now">Nothing playing</div>
+      <div class="alert-queue-list" id="alert-queue-list"></div>
+      <div class="alert-btns">
+        <button class="timer-btn" onclick="alertAction('skip')">⏭ Skip</button>
+        <button class="timer-btn" onclick="alertAction('clear')">🗑 Clear queue</button>
+      </div>
+      <div class="trigger-tests" id="trigger-tests">
+        <div class="trigger-tests-title">Test alerts</div>
+        <div class="empty" style="padding: 8px">No triggers configured — add them on the setup page.</div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="content" id="content">
@@ -121,6 +156,9 @@ function handle(msg) {
   if (msg.type === 'state') {
     widgets = msg.widgets || [];
     render();
+    if (msg.alerts) renderAlertQueue(msg.alerts);
+  } else if (msg.type === 'alert_queue') {
+    renderAlertQueue(msg);
   } else if (msg.type === 'widget_update') {
     const idx = widgets.findIndex(w => w.id === msg.widget.id);
     if (idx >= 0) widgets[idx] = msg.widget; else widgets.push(msg.widget);
@@ -245,6 +283,48 @@ function setDuration(id) {
   action(id, 'set_duration', ms);
 }
 
+// ── Alerts ────────────────────────────────────────────────────────────────────
+
+function renderAlertQueue({ playing, queue }) {
+  const now  = document.getElementById('alert-now');
+  const list = document.getElementById('alert-queue-list');
+  const status = document.getElementById('alert-status');
+  if (playing) {
+    now.innerHTML = 'Now playing: <b>' + escHtml(playing.triggerName) + '</b>' +
+      (playing.user ? ' <span style="color:var(--muted)">(' + escHtml(playing.user) + ')</span>' : '');
+  } else {
+    now.textContent = 'Nothing playing';
+  }
+  const q = queue || [];
+  status.textContent = playing ? 'playing · ' + q.length + ' queued' : (q.length ? q.length + ' queued' : 'idle');
+  list.innerHTML = q.map(a =>
+    '<div class="alert-queue-item">' + escHtml(a.triggerName) + (a.user ? ' — ' + escHtml(a.user) : '') + '</div>'
+  ).join('');
+}
+
+function alertAction(act) {
+  fetch('/api/alerts/' + act, { method: 'POST' }).catch(() => {});
+}
+
+function loadTriggerTests() {
+  fetch('/api/triggers').then(r => r.json()).then(d => {
+    const triggers = d.triggers || [];
+    if (!triggers.length) return;
+    const box = document.getElementById('trigger-tests');
+    box.innerHTML = '<div class="trigger-tests-title">Test alerts</div>' + triggers.map(t =>
+      '<div class="trigger-test-row">' +
+        '<span class="name' + (t.enabled ? '' : ' disabled') + '">' + escHtml(t.name) + '</span>' +
+        '<span class="badge">' + escHtml(t.source.type.replace(/_/g, ' ')) + '</span>' +
+        '<button class="test-btn" onclick="testTrigger(\'' + t.id + '\')">▶ Test</button>' +
+      '</div>'
+    ).join('');
+  }).catch(() => {});
+}
+
+function testTrigger(id) {
+  fetch('/api/triggers/' + id + '/test', { method: 'POST' }).catch(() => {});
+}
+
 // ── Timer RAF loop ────────────────────────────────────────────────────────────
 
 function timerLoop() {
@@ -274,6 +354,8 @@ function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'
 
 connectWS();
 requestAnimationFrame(timerLoop);
+loadTriggerTests();
+setInterval(loadTriggerTests, 30_000); // pick up triggers added/renamed in setup
 </script>
 </body>
 </html>

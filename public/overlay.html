@@ -300,10 +300,41 @@ html, body {
 
 /* ── Ticker ──────────────────────────────────────────────────────────────────── */
 #ticker { position: fixed; bottom: 6px; right: 8px; font-size: 10px; color: rgba(255,255,255,0.15); pointer-events: none; }
+
+/* ── Alerts ──────────────────────────────────────────────────────────────────── */
+#alert-layer { position: fixed; inset: 0; pointer-events: none; z-index: 999; }
+.alert-box { position: absolute; max-width: 80vw; }
+.alert-box.pos-top-left     { top: 32px; left: 32px; }
+.alert-box.pos-top-center   { top: 32px; left: 50%; transform: translateX(-50%); }
+.alert-box.pos-top-right    { top: 32px; right: 32px; }
+.alert-box.pos-center-left  { top: 50%; left: 32px; transform: translateY(-50%); }
+.alert-box.pos-center       { top: 50%; left: 50%; transform: translate(-50%,-50%); }
+.alert-box.pos-center-right { top: 50%; right: 32px; transform: translateY(-50%); }
+.alert-box.pos-bottom-left  { bottom: 32px; left: 32px; }
+.alert-box.pos-bottom-center{ bottom: 32px; left: 50%; transform: translateX(-50%); }
+.alert-box.pos-bottom-right { bottom: 32px; right: 32px; }
+/* position lives on .alert-box; animation on .alert-inner so transforms don't clash */
+.alert-inner { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.alert-inner img, .alert-inner video { max-width: 80vw; max-height: 80vh; }
+.alert-text {
+  padding: 10px 20px; border-radius: 10px;
+  text-align: center; font-weight: 700; line-height: 1.3;
+  max-width: 80vw; overflow-wrap: break-word;
+}
+.anim-in-fade       { animation: alertFade    0.4s ease both; }
+.anim-in-slide-up   { animation: alertSlideUp 0.4s cubic-bezier(0.22,1,0.36,1) both; }
+.anim-in-slide-down { animation: alertSlideDn 0.4s cubic-bezier(0.22,1,0.36,1) both; }
+.anim-in-pop        { animation: alertPop     0.45s cubic-bezier(0.34,1.56,0.64,1) both; }
+.anim-out-fade      { animation: alertFade    0.4s ease reverse both; }
+@keyframes alertFade    { from { opacity: 0; } to { opacity: 1; } }
+@keyframes alertSlideUp { from { opacity: 0; transform: translateY(48px); }  to { opacity: 1; transform: none; } }
+@keyframes alertSlideDn { from { opacity: 0; transform: translateY(-48px); } to { opacity: 1; transform: none; } }
+@keyframes alertPop     { from { opacity: 0; transform: scale(0.4); }        to { opacity: 1; transform: scale(1); } }
 </style>
 </head>
 <body>
 <div id="canvas"></div>
+<div id="alert-layer"></div>
 <div id="ticker"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.3/Sortable.min.js"></script>
@@ -365,6 +396,13 @@ function handleWS(msg) {
   if (msg.type === 'state') {
     state = msg;
     renderAll();
+    // Resume an alert already on screen (e.g. overlay refreshed mid-alert)
+    if (msg.alerts && msg.alerts.playingAlert) playAlert(msg.alerts.playingAlert, true);
+    else stopAlert();
+  } else if (msg.type === 'alert_play') {
+    playAlert(msg.alert);
+  } else if (msg.type === 'alert_stop') {
+    stopAlert(msg.alertId);
   } else if (msg.type === 'widget_update') {
     const idx = state.widgets.findIndex(w => w.id === msg.widget.id);
     if (idx >= 0) state.widgets[idx] = msg.widget; else state.widgets.push(msg.widget);
@@ -1174,6 +1212,84 @@ setInterval(() => {
     document.getElementById('ticker').textContent = 'Updated ' + new Date().toLocaleTimeString();
   }).catch(() => {});
 }, 30_000);
+
+// ── Alerts ────────────────────────────────────────────────────────────────────
+// The server owns the queue and timing; this just renders alert_play/alert_stop.
+// Add ?mute=1 to the overlay URL for silent browser previews (avoids double
+// audio when OBS and a preview tab are open at the same time).
+
+const ALERT_MUTED = new URLSearchParams(location.search).has('mute');
+let currentAlert = null; // { id, box, inner, audio, outAnim }
+
+function playAlert(alert, resume) {
+  removeAlertNow();
+  const layer = document.getElementById('alert-layer');
+  const box = document.createElement('div');
+  box.className = 'alert-box';
+  const pos = alert.position || {};
+  if (pos.mode === 'custom') {
+    box.style.left = (pos.x ?? 50) + '%';
+    box.style.top  = (pos.y ?? 20) + '%';
+    box.style.transform = 'translate(-50%,-50%)';
+  } else {
+    box.classList.add('pos-' + (pos.preset || 'center'));
+  }
+
+  const inner = document.createElement('div');
+  const animIn = (alert.animation || {}).in || 'fade';
+  inner.className = 'alert-inner' + (animIn !== 'none' && !resume ? ' anim-in-' + animIn : '');
+
+  if (alert.image && alert.image.src) {
+    const isVideo = /\.webm(\?|$)/i.test(alert.image.src);
+    const el = document.createElement(isVideo ? 'video' : 'img');
+    if (isVideo) { el.autoplay = true; el.loop = true; el.muted = true; }
+    el.src = alert.image.src;
+    el.style.width = (alert.image.widthPx || 300) + 'px';
+    el.style.objectFit = alert.image.fit || 'contain';
+    inner.appendChild(el);
+  }
+
+  if (alert.text && alert.text.text) {
+    const t = document.createElement('div');
+    t.className = 'alert-text';
+    t.textContent = alert.text.text;
+    t.style.fontSize = (alert.text.fontSize || 32) + 'px';
+    t.style.color = alert.text.color || '#e6edf3';
+    const [r,g,b] = hexToRgb(alert.text.bgColor || '#0d0d0d');
+    t.style.background = `rgba(${r},${g},${b},${alert.text.bgOpacity ?? 0.85})`;
+    if (alert.text.fontFamily) t.style.fontFamily = alert.text.fontFamily;
+    inner.appendChild(t);
+  }
+
+  box.appendChild(inner);
+  layer.appendChild(box);
+
+  let audio = null;
+  if (alert.audio && alert.audio.src && !ALERT_MUTED && !resume) {
+    audio = new Audio(alert.audio.src);
+    audio.volume = Math.max(0, Math.min(1, alert.audio.volume ?? 0.8));
+    audio.play().catch(() => {}); // browsers may block autoplay; OBS does not
+  }
+
+  currentAlert = { id: alert.id, box, inner, audio, outAnim: (alert.animation || {}).out || 'fade' };
+}
+
+function stopAlert(alertId) {
+  if (!currentAlert || (alertId && currentAlert.id !== alertId)) return;
+  const { box, inner, audio, outAnim } = currentAlert;
+  currentAlert = null;
+  if (audio) { try { audio.pause(); } catch {} }
+  if (outAnim === 'none') { box.remove(); return; }
+  inner.className = 'alert-inner anim-out-' + outAnim;
+  setTimeout(() => box.remove(), 450);
+}
+
+function removeAlertNow() {
+  if (!currentAlert) return;
+  if (currentAlert.audio) { try { currentAlert.audio.pause(); } catch {} }
+  currentAlert.box.remove();
+  currentAlert = null;
+}
 
 // ── Utility ────────────────────────────────────────────────────────────────────
 
