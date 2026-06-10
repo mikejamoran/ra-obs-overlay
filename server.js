@@ -55,6 +55,10 @@ let S = {
   widgets: [],
   triggers: [],
   mediaFolders: [],
+  // Alternate overlay layouts served at /obs?scene=<id> — each scene stores
+  // placement/visibility overrides for the panel, recent panel, rich presence
+  // and widgets, on top of the base layout.
+  scenes: [],
   twitchConnected:  false,
   twitchChannel:    process.env.TWITCH_CHANNEL || '',
   twitchAccessToken:  null,
@@ -83,6 +87,7 @@ function loadConfig() {
       if (saved.widgets)       S.widgets = saved.widgets;
       if (saved.triggers)      S.triggers = saved.triggers.map(t => triggers.normalizeTrigger(t));
       if (saved.mediaFolders)  S.mediaFolders = saved.mediaFolders;
+      if (saved.scenes)        S.scenes = saved.scenes;
       if (saved.twitchChannel)      S.twitchChannel      = saved.twitchChannel;
       if (saved.twitchAccessToken)  S.twitchAccessToken  = saved.twitchAccessToken;
       if (saved.twitchRefreshToken) S.twitchRefreshToken = saved.twitchRefreshToken;
@@ -100,6 +105,7 @@ function saveConfig() {
     fs.writeFileSync(CONFIG_FILE, JSON.stringify({
       creds: S.creds, display: S.display, gameId: S.gameId,
       widgets: S.widgets, triggers: S.triggers, mediaFolders: S.mediaFolders,
+      scenes: S.scenes,
       twitchChannel: S.twitchChannel,
       twitchAccessToken: S.twitchAccessToken, twitchRefreshToken: S.twitchRefreshToken,
       twitchUserId: S.twitchUserId, twitchScopes: S.twitchScopes,
@@ -156,7 +162,7 @@ function getFullState() {
   return {
     type: 'state',
     gameInfo: S.gameInfo, achievements: S.achievements,
-    display: S.display, widgets: S.widgets,
+    display: S.display, widgets: S.widgets, scenes: S.scenes,
     connected: S.connected,
     nowPlayingId: S.nowPlayingId, nowPlayingTitle: S.nowPlayingTitle,
     richPresence: S.richPresence,
@@ -578,7 +584,7 @@ const upload = multer({
 // ── Middleware ──────────────────────────────────────────────────────────────────
 
 app.set('trust proxy', 1); // trust Caddy's X-Forwarded-Proto so req.protocol returns 'https'
-app.use(express.json());
+app.use(express.json({ limit: '5mb' })); // backup imports can exceed the 100kb default
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ── Routes: pages ───────────────────────────────────────────────────────────────
@@ -641,7 +647,7 @@ app.get('/api/state', (req, res) => {
   if (S.connected && S.gameId && (now - S.lastAchRefresh) > achTtl) fetchAchievements(S.gameId).catch(console.error);
   res.json({
     gameInfo: S.gameInfo, achievements: S.achievements,
-    display: S.display, widgets: S.widgets, connected: S.connected,
+    display: S.display, widgets: S.widgets, scenes: S.scenes, connected: S.connected,
     nowPlayingId: S.nowPlayingId, nowPlayingTitle: S.nowPlayingTitle,
     richPresence: S.richPresence,
     twitch: twitchStatus(),
@@ -669,13 +675,41 @@ app.post('/api/display', basicAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+// When a drag/resize comes from /obs?scene=…, the new placement is stored as a
+// scene override instead of changing the base layout.
+function sceneOverrideTarget(sceneId, section, widgetId) {
+  const sc = S.scenes.find(s => s.id === sceneId);
+  if (!sc) return null;
+  sc.overrides = sc.overrides || {};
+  if (section === 'widgets') {
+    sc.overrides.widgets = sc.overrides.widgets || {};
+    return sc.overrides.widgets[widgetId] = sc.overrides.widgets[widgetId] || {};
+  }
+  return sc.overrides[section] = sc.overrides[section] || {};
+}
+
+function applyPos(target, body, map) {
+  for (const [from, to] of Object.entries(map)) {
+    if (typeof body[from] === 'number') target[to] = Math.round(body[from]);
+  }
+}
+
 // No auth — overlay calls this during drag/resize
 app.post('/api/display/position', (req, res) => {
-  const { x, y, w, h } = req.body || {};
-  if (typeof x === 'number') S.display.panelX     = Math.round(x);
-  if (typeof y === 'number') S.display.panelY     = Math.round(y);
-  if (typeof w === 'number') S.display.panelWidth = Math.round(w);
-  if (typeof h === 'number') S.display.panelH     = Math.round(h);
+  const body = req.body || {};
+  const ov = body.scene ? sceneOverrideTarget(body.scene, 'panel') : null;
+  if (ov) applyPos(ov, body, { x: 'x', y: 'y', w: 'w', h: 'h' });
+  else    applyPos(S.display, body, { x: 'panelX', y: 'panelY', w: 'panelWidth', h: 'panelH' });
+  saveConfig();
+  res.json({ ok: true });
+});
+
+// No auth — floating Rich Presence drag
+app.post('/api/display/rp-position', (req, res) => {
+  const body = req.body || {};
+  const ov = body.scene ? sceneOverrideTarget(body.scene, 'rp') : null;
+  if (ov) applyPos(ov, body, { x: 'x', y: 'y' });
+  else    applyPos(S.display, body, { x: 'rpX', y: 'rpY' });
   saveConfig();
   res.json({ ok: true });
 });
@@ -734,22 +768,22 @@ app.delete('/api/widgets/:id', basicAuth, (req, res) => {
 
 // No auth — recent panel drag/resize
 app.post('/api/display/recent-position', (req, res) => {
-  const { x, y, w, h } = req.body || {};
-  if (typeof x === 'number') S.display.recentX = Math.round(x);
-  if (typeof y === 'number') S.display.recentY = Math.round(y);
-  if (typeof w === 'number') S.display.recentW = Math.round(w);
-  if (typeof h === 'number') S.display.recentH = Math.round(h);
+  const body = req.body || {};
+  const ov = body.scene ? sceneOverrideTarget(body.scene, 'recent') : null;
+  if (ov) applyPos(ov, body, { x: 'x', y: 'y', w: 'w', h: 'h' });
+  else    applyPos(S.display, body, { x: 'recentX', y: 'recentY', w: 'recentW', h: 'recentH' });
   saveConfig();
   res.json({ ok: true });
 });
 
-// No auth — overlay drag
+// No auth — overlay drag/resize
 app.post('/api/widgets/:id/position', (req, res) => {
   const w = S.widgets.find(w => w.id === req.params.id);
   if (!w) return res.status(404).json({ error: 'not found' });
-  const { x, y } = req.body || {};
-  if (typeof x === 'number') w.x = Math.round(x);
-  if (typeof y === 'number') w.y = Math.round(y);
+  const body = req.body || {};
+  const ov = body.scene ? sceneOverrideTarget(body.scene, 'widgets', w.id) : null;
+  if (ov) applyPos(ov, body, { x: 'x', y: 'y', w: 'w', h: 'h' });
+  else    applyPos(w, body, { x: 'x', y: 'y', w: 'w', h: 'h' });
   saveConfig();
   res.json({ ok: true });
 });
@@ -789,6 +823,95 @@ app.delete('/api/uploads/:filename', basicAuth, (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Routes: scenes (alternate overlay layouts) ──────────────────────────────────
+
+app.get('/api/scenes', basicAuth, (req, res) => res.json({ scenes: S.scenes }));
+
+app.post('/api/scenes', basicAuth, (req, res) => {
+  const name = ((req.body || {}).name || '').trim() || 'Scene ' + (S.scenes.length + 1);
+  const scene = { id: crypto.randomUUID(), name, overrides: {} };
+  S.scenes.push(scene);
+  saveConfig();
+  broadcast({ type: 'scenes', scenes: S.scenes });
+  res.json({ ok: true, scene });
+});
+
+app.put('/api/scenes/:id', basicAuth, (req, res) => {
+  const sc = S.scenes.find(s => s.id === req.params.id);
+  if (!sc) return res.status(404).json({ error: 'not found' });
+  const body = req.body || {};
+  if (typeof body.name === 'string' && body.name.trim()) sc.name = body.name.trim();
+  // Merge override patches per section; visible:null removes the override (inherit)
+  if (body.overrides && typeof body.overrides === 'object') {
+    sc.overrides = sc.overrides || {};
+    for (const [section, patch] of Object.entries(body.overrides)) {
+      if (section === 'widgets') {
+        sc.overrides.widgets = sc.overrides.widgets || {};
+        for (const [wid, wpatch] of Object.entries(patch || {})) {
+          const t = sc.overrides.widgets[wid] = sc.overrides.widgets[wid] || {};
+          for (const [k, v] of Object.entries(wpatch || {})) {
+            if (v === null) delete t[k]; else t[k] = v;
+          }
+        }
+      } else {
+        const t = sc.overrides[section] = sc.overrides[section] || {};
+        for (const [k, v] of Object.entries(patch || {})) {
+          if (v === null) delete t[k]; else t[k] = v;
+        }
+      }
+    }
+  }
+  saveConfig();
+  broadcast({ type: 'scenes', scenes: S.scenes });
+  res.json({ ok: true, scene: sc });
+});
+
+app.delete('/api/scenes/:id', basicAuth, (req, res) => {
+  const idx = S.scenes.findIndex(s => s.id === req.params.id);
+  if (idx < 0) return res.status(404).json({ error: 'not found' });
+  S.scenes.splice(idx, 1);
+  saveConfig();
+  broadcast({ type: 'scenes', scenes: S.scenes });
+  res.json({ ok: true });
+});
+
+// ── Routes: backup (export / import settings) ───────────────────────────────────
+
+// Excludes RA credentials and Twitch tokens — those stay machine-local.
+app.get('/api/backup', basicAuth, (req, res) => {
+  const stamp = new Date().toISOString().slice(0, 10);
+  res.set('Content-Disposition', `attachment; filename="overlay-backup-${stamp}.json"`);
+  res.json({
+    raOverlayBackup: 1,
+    exportedAt: new Date().toISOString(),
+    gameId: S.gameId,
+    display: S.display,
+    widgets: S.widgets,
+    triggers: S.triggers,
+    mediaFolders: S.mediaFolders,
+    scenes: S.scenes,
+  });
+});
+
+app.post('/api/backup/import', basicAuth, (req, res) => {
+  const b = req.body || {};
+  if (!b.raOverlayBackup) return res.status(400).json({ error: 'Not an overlay backup file' });
+  try {
+    if (b.display && typeof b.display === 'object') Object.assign(S.display, b.display);
+    if (Array.isArray(b.widgets))      S.widgets      = b.widgets;
+    if (Array.isArray(b.triggers))     S.triggers     = b.triggers.map(t => triggers.normalizeTrigger(t));
+    if (Array.isArray(b.mediaFolders)) S.mediaFolders = b.mediaFolders.filter(f => f && f.id && f.path);
+    if (Array.isArray(b.scenes))       S.scenes       = b.scenes.filter(s => s && s.id && s.name);
+    if (b.gameId) { S.gameId = parseInt(b.gameId) || S.gameId; S.lastAchRefresh = 0; }
+    saveConfig();
+    eventsub.refresh();
+    broadcast(getFullState());
+    res.json({ ok: true, counts: { widgets: S.widgets.length, triggers: S.triggers.length, scenes: S.scenes.length } });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 // ── Routes: triggers & alerts ───────────────────────────────────────────────────
 
 app.get('/api/triggers', basicAuth, (req, res) => {
@@ -825,6 +948,45 @@ app.post('/api/triggers/:id/test', basicAuth, (req, res) => {
   const t = S.triggers.find(t => t.id === req.params.id);
   if (!t) return res.status(404).json({ error: 'not found' });
   triggers.fireTest(t);
+  res.json({ ok: true });
+});
+
+// Drag-positioning: show a persistent, draggable sample of this alert on the
+// overlay (outside the queue). Drag end saves via /position; ✓ or the setup
+// page's Done button broadcasts preview-end.
+app.post('/api/triggers/:id/preview', basicAuth, (req, res) => {
+  const t = S.triggers.find(t => t.id === req.params.id);
+  if (!t) return res.status(404).json({ error: 'not found' });
+  broadcast({ type: 'alert_preview', alert: triggers.buildTestAlert(t), triggerId: t.id });
+  res.json({ ok: true });
+});
+
+// No auth — saved from the overlay while dragging the preview (like widget drag)
+app.post('/api/triggers/:id/position', (req, res) => {
+  const t = S.triggers.find(t => t.id === req.params.id);
+  if (!t) return res.status(404).json({ error: 'not found' });
+  const { x, y } = req.body || {};
+  if (typeof x !== 'number' || typeof y !== 'number') return res.status(400).json({ error: 'x and y required' });
+  t.actions.position = {
+    ...t.actions.position,
+    mode: 'custom',
+    x: Math.min(100, Math.max(0, Math.round(x * 10) / 10)),
+    y: Math.min(100, Math.max(0, Math.round(y * 10) / 10)),
+  };
+  saveConfig();
+  res.json({ ok: true, position: t.actions.position });
+});
+
+// No auth — the ✓ button on the overlay preview also ends positioning
+app.post('/api/alerts/preview-end', (req, res) => {
+  broadcast({ type: 'alert_preview_end' });
+  res.json({ ok: true });
+});
+
+// No auth — overlay reports the playing alert's sound/video finished
+app.post('/api/alerts/finished', (req, res) => {
+  const { alertId } = req.body || {};
+  if (alertId) triggers.mediaFinished(alertId);
   res.json({ ok: true });
 });
 

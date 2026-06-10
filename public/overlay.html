@@ -350,6 +350,29 @@ html, body {
 
 /* Rich presence line in the panel header */
 #game-rp { font-size: 11px; color: var(--gold-color, #e3b341); margin-top: 2px; line-height: 1.3; }
+
+/* Floating rich presence chip */
+#rp-float {
+  position: absolute; cursor: grab; user-select: none;
+  background: rgba(var(--bg-rgb,13,13,13), var(--bg-opacity,0.88));
+  border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;
+  padding: 6px 12px; font-size: 13px; color: var(--gold-color, #e3b341);
+  max-width: 60vw; line-height: 1.4; z-index: 8;
+}
+#rp-float:active { cursor: grabbing; }
+
+/* Alert positioning preview */
+.alert-preview-hint {
+  margin-top: 8px; display: flex; align-items: center; gap: 8px;
+  background: rgba(31,111,235,0.92); color: #fff; border-radius: 8px;
+  padding: 6px 10px; font-size: 12px; font-weight: 600; cursor: grab;
+}
+.alert-preview-hint button {
+  background: #fff; color: #1f6feb; border: none; border-radius: 6px;
+  padding: 3px 12px; font-size: 12px; font-weight: 700; cursor: pointer;
+}
+#alert-preview-box { pointer-events: auto; cursor: grab; outline: 2px dashed rgba(31,111,235,0.9); outline-offset: 6px; }
+#alert-preview-box:active { cursor: grabbing; }
 </style>
 </head>
 <body>
@@ -394,7 +417,25 @@ function applyStyles(d) {
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-let state = { display: {}, achievements: [], gameInfo: {}, widgets: [], connected: false, richPresence: '' };
+let state = { display: {}, achievements: [], gameInfo: {}, widgets: [], scenes: [], connected: false, richPresence: '' };
+
+// ── Scenes ────────────────────────────────────────────────────────────────────
+// /obs?scene=<id> renders an alternate layout: per-element position/size/
+// visibility overrides on top of the base layout. Drags in a scene URL save
+// to that scene only.
+
+const SCENE = new URLSearchParams(location.search).get('scene') || null;
+
+function sceneOv(section, widgetId) {
+  if (!SCENE) return {};
+  const sc = (state.scenes || []).find(s => s.id === SCENE);
+  if (!sc || !sc.overrides) return {};
+  if (section === 'widgets') return (sc.overrides.widgets || {})[widgetId] || {};
+  return sc.overrides[section] || {};
+}
+
+// Body fields appended to every position save so the server routes it to the scene
+function sceneBody() { return SCENE ? { scene: SCENE } : {}; }
 let dismissed = new Set();
 let achSortable = null;
 let resizeObservers = [];
@@ -473,7 +514,15 @@ function handleWS(msg) {
     state.richPresence = msg.message;
     const rp = document.getElementById('game-rp');
     if (rp) rp.textContent = msg.message;
-    else if (msg.message) renderAchPanel();
+    else if (msg.message && !state.display.rpFloating) renderAchPanel();
+    renderRichPresence();
+  } else if (msg.type === 'scenes') {
+    state.scenes = msg.scenes || [];
+    renderAll();
+  } else if (msg.type === 'alert_preview') {
+    showAlertPreview(msg.alert, msg.triggerId);
+  } else if (msg.type === 'alert_preview_end') {
+    removeAlertPreview();
   } else if (msg.type === 'achievements') {
     if (msg.achievements) state.achievements = msg.achievements;
     if (msg.gameInfo)     state.gameInfo     = msg.gameInfo;
@@ -493,7 +542,8 @@ function renderAll() {
   document.querySelectorAll('.widget').forEach(el => el.remove());
 
   for (const w of state.widgets) {
-    if (w.visible) placeWidget(w, firstRender);
+    const vis = sceneOv('widgets', w.id).visible ?? w.visible;
+    if (vis) placeWidget(w, firstRender);
   }
   firstRender = false;
 }
@@ -513,19 +563,22 @@ function renderAchPanel() {
     canvas.insertBefore(aw, canvas.firstChild);
   }
 
+  const ovP = sceneOv('panel');
+  const panelVisible = ovP.visible ?? (d.panelVisible !== false);
   const wasHidden = aw.style.display === 'none' || !aw.hasChildNodes();
-  if (d.panelVisible === false) {
+  if (!panelVisible) {
     if (!wasHidden) animateOut(aw.querySelector('#panel'), () => { aw.style.display = 'none'; });
     else aw.style.display = 'none';
     return;
   }
   aw.style.display = '';
 
-  // Position
-  if (d.panelX !== null && d.panelX !== undefined) {
+  // Position (scene override → base custom px → preset)
+  const px = ovP.x ?? d.panelX, py = ovP.y ?? d.panelY;
+  if (px !== null && px !== undefined) {
     aw.className = d.panelLocked ? 'locked' : '';
-    aw.style.left = d.panelX + 'px';
-    aw.style.top  = d.panelY + 'px';
+    aw.style.left = px + 'px';
+    aw.style.top  = py + 'px';
     aw.style.transform = '';
     aw.style.right = '';
     aw.style.bottom = '';
@@ -534,6 +587,8 @@ function renderAchPanel() {
     aw.style.left = ''; aw.style.top = ''; aw.style.right = ''; aw.style.bottom = '';
     aw.style.transform = '';
   }
+  if (ovP.w) document.documentElement.style.setProperty('--panel-width', ovP.w + 'px');
+  if (ovP.h) document.documentElement.style.setProperty('--panel-h',     ovP.h + 'px');
   aw.style.zIndex = d.panelZIndex || 10;
 
   if (!d.panelLocked) makeDraggable(aw, '/api/display/position', (x, y) => { state.display.panelX = x; state.display.panelY = y; });
@@ -553,7 +608,7 @@ function renderAchPanel() {
     const info = document.createElement('div');
     info.style.flex = '1';
     info.innerHTML = `<div id="game-title">${escHtml(gi.title)}</div><div id="game-progress">${gi.earned || 0} / ${gi.numAch || 0} achievements</div>` +
-      (d.showRichPresence ? `<div id="game-rp">${escHtml(state.richPresence || '')}</div>` : '');
+      (d.showRichPresence && !d.rpFloating ? `<div id="game-rp">${escHtml(state.richPresence || '')}</div>` : '');
     hdr.appendChild(art);
     hdr.appendChild(info);
     panel.appendChild(hdr);
@@ -649,7 +704,7 @@ function renderAchPanel() {
         const w = Math.round(aw.offsetWidth);
         const h = Math.round(parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--panel-h')) || 600);
         state.display.panelWidth = w; state.display.panelH = h;
-        fetch('/api/display/position', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({w,h}) }).catch(()=>{});
+        fetch('/api/display/position', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({w,h,...sceneBody()}) }).catch(()=>{});
       }
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp, { once: true });
@@ -657,8 +712,32 @@ function renderAchPanel() {
   }
   aw.appendChild(rh);
 
-  // Recent panel
+  // Recent panel + floating rich presence
   renderRecentPanel(d, achs);
+  renderRichPresence();
+}
+
+// Rich Presence as its own movable element (display.rpFloating); otherwise it
+// renders inside the panel header.
+function renderRichPresence() {
+  const d = state.display || {};
+  let el = document.getElementById('rp-float');
+  const ov = sceneOv('rp');
+  const show = d.showRichPresence && d.rpFloating && (ov.visible ?? true);
+  if (!show) { if (el) el.style.display = 'none'; return; }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'rp-float';
+    document.getElementById('canvas').appendChild(el);
+    makeDraggable(el, '/api/display/rp-position', (x, y) => {
+      state.display.rpX = x; state.display.rpY = y;
+    });
+  }
+  el.style.display = '';
+  el.textContent = state.richPresence || '…';
+  const x = ov.x ?? d.rpX, y = ov.y ?? d.rpY;
+  el.style.left = (x ?? 16) + 'px';
+  el.style.top  = (y ?? 16) + 'px';
 }
 
 function buildTile(a, d, pinned) {
@@ -781,7 +860,8 @@ function renderRecentPanel(d, achs) {
   const canvas = document.getElementById('canvas');
   let rp = document.getElementById('recent-panel');
 
-  if (!d.recentEnabled) { if (rp) rp.style.display = 'none'; return; }
+  const ovR = sceneOv('recent');
+  if (!d.recentEnabled || ovR.visible === false) { if (rp) rp.style.display = 'none'; return; }
 
   if (!rp) {
     rp = document.createElement('div');
@@ -793,25 +873,27 @@ function renderRecentPanel(d, achs) {
   }
   rp.style.display = '';
 
-  // Position
-  if (d.recentX !== null && d.recentX !== undefined) {
-    rp.style.left = d.recentX + 'px'; rp.style.top = d.recentY + 'px';
+  // Position (scene override → base)
+  const rx = ovR.x ?? d.recentX, ry = ovR.y ?? d.recentY;
+  if (rx !== null && rx !== undefined) {
+    rp.style.left = rx + 'px'; rp.style.top = ry + 'px';
     rp.style.bottom = ''; rp.style.right = ''; rp.style.transform = '';
   } else {
     rp.style.left = ''; rp.style.top = ''; rp.style.bottom = ''; rp.style.right = '';
   }
-  if (d.recentW) rp.style.width  = d.recentW + 'px';
-  if (d.recentH) rp.style.height = d.recentH + 'px';
+  if (ovR.w ?? d.recentW) rp.style.width  = (ovR.w ?? d.recentW) + 'px';
+  if (ovR.h ?? d.recentH) rp.style.height = (ovR.h ?? d.recentH) + 'px';
   rp.style.zIndex = d.recentZIndex || 9;
 
   const mode   = d.recentMode || 'stack';
   const earned = achs.filter(a => a.earned && a.dateEarned)
     .sort((a,b) => b.dateEarned.localeCompare(a.dateEarned))
     .slice(0, d.recentCount || 3);
+  const hasCustomPos = rx !== null && rx !== undefined;
   const key = mode + ':' + earned.map(a => a.id).join(',');
-  if (rp.dataset.key === key && (d.recentX === undefined || rp.style.left)) {
+  if (rp.dataset.key === key && (!hasCustomPos || rp.style.left)) {
     // Still set class in case mode changed
-    setRecentClass(rp, d, mode); return;
+    setRecentClass(rp, d, mode, hasCustomPos); return;
   }
   rp.dataset.key = key;
 
@@ -819,7 +901,7 @@ function renderRecentPanel(d, achs) {
   let rh = document.getElementById('recent-resize');
   Array.from(rp.children).forEach(c => { if (c !== rh) c.remove(); });
 
-  setRecentClass(rp, d, mode);
+  setRecentClass(rp, d, mode, hasCustomPos);
 
   if (mode === 'ticker') {
     buildRecentTicker(rp, earned, d);
@@ -857,7 +939,7 @@ function renderRecentPanel(d, achs) {
         document.body.style.userSelect = ''; document.body.style.cursor = '';
         const w = Math.round(rp.offsetWidth), h = Math.round(rp.offsetHeight);
         state.display.recentW = w; state.display.recentH = h;
-        fetch('/api/display/recent-position', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({w,h}) }).catch(()=>{});
+        fetch('/api/display/recent-position', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({w,h,...sceneBody()}) }).catch(()=>{});
       }
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp, { once: true });
@@ -866,8 +948,8 @@ function renderRecentPanel(d, achs) {
   rp.appendChild(rh);
 }
 
-function setRecentClass(rp, d, mode) {
-  if (d.recentX !== null && d.recentX !== undefined) {
+function setRecentClass(rp, d, mode, hasCustomPos) {
+  if (hasCustomPos ?? (d.recentX !== null && d.recentX !== undefined)) {
     rp.className = mode === 'ticker' ? 'mode-ticker' : '';
   } else {
     rp.className = (mode === 'ticker' ? 'mode-ticker ' : '') + (d.recentPos || 'bottom-left');
@@ -917,10 +999,11 @@ function placeWidget(widget, animate) {
   const canvas = document.getElementById('canvas');
   document.getElementById('w-' + widget.id)?.remove();
 
+  const ov = sceneOv('widgets', widget.id);
   const el = document.createElement('div');
   el.id        = 'w-' + widget.id;
   el.className = 'widget' + (widget.locked ? ' locked' : '');
-  el.style.cssText = `left:${widget.x}px;top:${widget.y}px;width:${widget.w}px;height:${widget.h}px;z-index:${widget.zIndex||1}`;
+  el.style.cssText = `left:${ov.x ?? widget.x}px;top:${ov.y ?? widget.y}px;width:${ov.w ?? widget.w}px;height:${ov.h ?? widget.h}px;z-index:${widget.zIndex||1}`;
 
   switch (widget.type) {
     case 'death_counter':  el.appendChild(buildDeathCounter(widget)); break;
@@ -940,18 +1023,20 @@ function placeWidget(widget, animate) {
 }
 
 function patchWidget(widget) {
+  const ov  = sceneOv('widgets', widget.id);
+  const vis = ov.visible ?? widget.visible;
   const el = document.getElementById('w-' + widget.id);
-  if (!el) { if (widget.visible) placeWidget(widget, true); return; }
-  if (!widget.visible) {
+  if (!el) { if (vis) placeWidget(widget, true); return; }
+  if (!vis) {
     if (el.style.display !== 'none') animateOut(el, () => { el.style.display = 'none'; });
     return;
   }
   if (el.style.display === 'none') { el.style.display = ''; animateIn(el); }
   el.style.display  = '';
-  el.style.left     = widget.x + 'px';
-  el.style.top      = widget.y + 'px';
-  el.style.width    = widget.w + 'px';
-  el.style.height   = widget.h + 'px';
+  el.style.left     = (ov.x ?? widget.x) + 'px';
+  el.style.top      = (ov.y ?? widget.y) + 'px';
+  el.style.width    = (ov.w ?? widget.w) + 'px';
+  el.style.height   = (ov.h ?? widget.h) + 'px';
   el.style.zIndex   = widget.zIndex || 1;
   // Update counter value without full rebuild
   const valEl = el.querySelector('[data-wval]');
@@ -1205,7 +1290,7 @@ function makeDraggable(el, endpoint, onUpdate) {
       const x = Math.round(parseFloat(el.style.left) || 0);
       const y = Math.round(parseFloat(el.style.top)  || 0);
       if (onUpdate) onUpdate(x, y);
-      fetch(endpoint, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({x,y}) }).catch(()=>{});
+      fetch(endpoint, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({x,y,...sceneBody()}) }).catch(()=>{});
     }
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp, { once: true });
@@ -1240,7 +1325,7 @@ function makeResizable(el, endpoint, minW = 80, minH = 40) {
       const w = Math.round(el.offsetWidth), h = Math.round(el.offsetHeight);
       fetch(endpoint, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ w, h }),
+        body: JSON.stringify({ w, h, ...sceneBody() }),
       }).catch(() => {});
     }
     document.addEventListener('mousemove', onMove);
@@ -1296,9 +1381,9 @@ setInterval(() => {
 const ALERT_MUTED = new URLSearchParams(location.search).has('mute');
 let currentAlert = null; // { id, box, inner, audio, outAnim }
 
-function playAlert(alert, resume) {
-  removeAlertNow();
-  const layer = document.getElementById('alert-layer');
+// Build the positioned alert box + visual content (shared by live alerts and
+// the drag-positioning preview). opts: { silent } mutes/loops nothing audible.
+function buildAlertBox(alert, opts = {}) {
   const box = document.createElement('div');
   box.className = 'alert-box';
   const pos = alert.position || {};
@@ -1311,13 +1396,20 @@ function playAlert(alert, resume) {
   }
 
   const inner = document.createElement('div');
-  const animIn = (alert.animation || {}).in || 'fade';
-  inner.className = 'alert-inner' + (animIn !== 'none' && !resume ? ' anim-in-' + animIn : '');
+  inner.className = 'alert-inner';
+  const finiteMedia = []; // elements whose 'ended' event can end the alert
 
   if (alert.image && alert.image.src) {
-    const isVideo = /\.webm(\?|$)/i.test(alert.image.src);
+    const isVideo = /\.(webm|mp4)(\?|$)/i.test(alert.image.src);
     const el = document.createElement(isVideo ? 'video' : 'img');
-    if (isVideo) { el.autoplay = true; el.loop = true; el.muted = true; }
+    if (isVideo) {
+      el.autoplay = true;
+      el.loop  = !!alert.image.loop;
+      el.muted = !!alert.image.muted || ALERT_MUTED || !!opts.silent;
+      el.volume = Math.max(0, Math.min(1, alert.image.volume ?? 1));
+      el.playsInline = true;
+      if (!el.loop) finiteMedia.push(el);
+    }
     el.src = alert.image.src;
     el.style.width = (alert.image.widthPx || 300) + 'px';
     el.style.objectFit = alert.image.fit || 'contain';
@@ -1338,6 +1430,15 @@ function playAlert(alert, resume) {
   }
 
   box.appendChild(inner);
+  return { box, inner, finiteMedia };
+}
+
+function playAlert(alert, resume) {
+  removeAlertNow();
+  const layer = document.getElementById('alert-layer');
+  const { box, inner, finiteMedia } = buildAlertBox(alert);
+  const animIn = (alert.animation || {}).in || 'fade';
+  if (animIn !== 'none' && !resume) inner.classList.add('anim-in-' + animIn);
   layer.appendChild(box);
 
   let audio = null;
@@ -1345,9 +1446,86 @@ function playAlert(alert, resume) {
     audio = new Audio(alert.audio.src);
     audio.volume = Math.max(0, Math.min(1, alert.audio.volume ?? 0.8));
     audio.play().catch(() => {}); // browsers may block autoplay; OBS does not
+    finiteMedia.push(audio);
+  }
+
+  // durationMode 'media': tell the server when every finite sound/video has
+  // ended so the alert closes with the media instead of the fixed timer.
+  if (alert.durationMode === 'media' && finiteMedia.length && !resume) {
+    let pending = finiteMedia.length;
+    const done = () => {
+      if (--pending > 0) return;
+      fetch('/api/alerts/finished', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alertId: alert.id }),
+      }).catch(() => {});
+    };
+    finiteMedia.forEach(m => {
+      m.addEventListener('ended', done, { once: true });
+      m.addEventListener('error', done, { once: true });
+    });
   }
 
   currentAlert = { id: alert.id, box, inner, audio, outAnim: (alert.animation || {}).out || 'fade' };
+}
+
+// ── Alert drag-positioning preview ────────────────────────────────────────────
+// Setup's "📍 Position on overlay" shows a persistent sample alert here; drag
+// it anywhere and the trigger's position is saved as % of the canvas.
+
+let previewState = null; // { box, triggerId }
+
+function showAlertPreview(alert, triggerId) {
+  removeAlertPreview();
+  const layer = document.getElementById('alert-layer');
+  const { box } = buildAlertBox(alert, { silent: true });
+  box.id = 'alert-preview-box';
+
+  const hint = document.createElement('div');
+  hint.className = 'alert-preview-hint';
+  hint.innerHTML = `<span>📍 Drag to position</span><button data-nodrag="1">✓ Done</button>`;
+  hint.querySelector('button').onclick = e => {
+    e.stopPropagation();
+    fetch('/api/alerts/preview-end', { method: 'POST' }).catch(() => {});
+    removeAlertPreview();
+  };
+  box.querySelector('.alert-inner').appendChild(hint);
+  layer.appendChild(box);
+  previewState = { box, triggerId };
+
+  box.addEventListener('mousedown', e => {
+    if (e.target.closest('[data-nodrag]')) return;
+    e.preventDefault();
+    const rect = box.getBoundingClientRect();
+    const ox = e.clientX - rect.left, oy = e.clientY - rect.top;
+    document.body.style.userSelect = 'none';
+
+    function onMove(ev) {
+      // Switch from preset/percent to pixel positioning while dragging
+      box.classList.remove(...[...box.classList].filter(c => c.startsWith('pos-')));
+      box.style.transform = '';
+      box.style.right = ''; box.style.bottom = '';
+      box.style.left = (ev.clientX - ox) + 'px';
+      box.style.top  = (ev.clientY - oy) + 'px';
+    }
+    function onUp() {
+      document.removeEventListener('mousemove', onMove);
+      document.body.style.userSelect = '';
+      const r = box.getBoundingClientRect();
+      const x = ((r.left + r.width  / 2) / window.innerWidth)  * 100;
+      const y = ((r.top  + r.height / 2) / window.innerHeight) * 100;
+      fetch('/api/triggers/' + triggerId + '/position', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 }),
+      }).catch(() => {});
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp, { once: true });
+  });
+}
+
+function removeAlertPreview() {
+  if (previewState) { previewState.box.remove(); previewState = null; }
 }
 
 function stopAlert(alertId) {

@@ -122,6 +122,20 @@ Alert media comes from two places (both browsable via the **Choose…** picker):
    ⚠ Anyone who can reach the server can fetch files in shared folders — only
    share folders that contain stream media.
 
+### Video alerts
+
+Alerts can play video files (`mp4` / `webm`) — with sound — via the Image/GIF/Video
+action: per-trigger loop, mute, and volume controls. Set **Alert ends → "When
+sound / video finishes"** to let the media's own length end the alert (the
+duration field then acts as a maximum).
+
+### Positioning alerts by dragging
+
+In a trigger's editor, click **📍 Position on overlay**: a sample of that alert
+appears on every connected overlay (OBS Interact mode or the browser preview).
+Drag it where you want it and click **✓ Done** — the position is saved as a
+percentage of the canvas, so it holds at any resolution.
+
 ### Alert audio in OBS
 
 OBS browser sources allow autoplay, so alert sounds just work in the `/obs`
@@ -129,6 +143,28 @@ source. Tick **Control audio via OBS** on the browser source to route alert
 audio through the OBS mixer. When previewing in a normal browser, autoplay may
 be blocked until you click the page — open `/obs?mute=1` for a silent preview
 and to avoid hearing sounds twice while OBS is also open.
+
+---
+
+## Overlay scenes (multiple browser sources)
+
+*Overlay & Widgets → Overlay Scenes* creates alternate layouts of the same
+overlay, each with its own URL (`/obs?scene=<id>`) for a separate OBS browser
+source — e.g. move the countdown elsewhere for your full-cam scene. A scene
+inherits the base layout; open its preview URL and **drag elements around** to
+reposition them for that scene only, and use the per-scene show/hide controls
+for the panel, recent panel, rich presence, and each widget. Alerts render the
+same on every scene.
+
+Rich Presence can also be detached from the panel header into its own movable
+chip (*Animations & Refresh → Float Rich Presence*).
+
+## Backup / restore
+
+The sidebar's **Backup** section exports a JSON file containing display
+settings, widgets, triggers, scenes, and media folders — credentials and
+Twitch tokens are deliberately excluded. Import it on any instance to restore
+(replaces the current layout after confirmation).
 
 ---
 
