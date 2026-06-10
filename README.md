@@ -201,6 +201,15 @@ same on every scene.
 Rich Presence can also be detached from the panel header into its own movable
 chip (*Animations & Refresh → Float Rich Presence*).
 
+## Undo for deletions
+
+Deleting a widget, trigger, scene, or media folder shows an **↺ Undo** toast on
+the setup page (also Ctrl/Cmd+Z outside text fields). The last 15 deletions can
+be undone in reverse order — restored items keep their ids, so scene placements
+referencing a restored widget come back too. The undo history is in-memory and
+clears when the server restarts. Because deletes are recoverable, there are no
+"are you sure?" prompts anymore.
+
 ## Backup / restore
 
 The sidebar's **Backup** section exports a JSON file containing display

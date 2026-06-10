@@ -767,10 +767,11 @@ app.put('/api/widgets/:id', basicAuth, (req, res) => {
 app.delete('/api/widgets/:id', basicAuth, (req, res) => {
   const idx = S.widgets.findIndex(w => w.id === req.params.id);
   if (idx < 0) return res.status(404).json({ error: 'not found' });
-  S.widgets.splice(idx, 1);
+  const [widget] = S.widgets.splice(idx, 1);
+  pushUndo('widget', widget, idx, widget.label || widget.type);
   saveConfig();
   broadcast({ type: 'widget_delete', id: req.params.id });
-  res.json({ ok: true });
+  res.json({ ok: true, undo: { kind: 'widget', label: widget.label || widget.type } });
 });
 
 // No auth — recent panel drag/resize
@@ -876,10 +877,11 @@ app.put('/api/scenes/:id', basicAuth, (req, res) => {
 app.delete('/api/scenes/:id', basicAuth, (req, res) => {
   const idx = S.scenes.findIndex(s => s.id === req.params.id);
   if (idx < 0) return res.status(404).json({ error: 'not found' });
-  S.scenes.splice(idx, 1);
+  const [scene] = S.scenes.splice(idx, 1);
+  pushUndo('scene', scene, idx, scene.name);
   saveConfig();
   broadcast({ type: 'scenes', scenes: S.scenes });
-  res.json({ ok: true });
+  res.json({ ok: true, undo: { kind: 'scene', label: scene.name } });
 });
 
 // ── Routes: backup (export / import settings) ───────────────────────────────────
@@ -919,6 +921,50 @@ app.post('/api/backup/import', basicAuth, (req, res) => {
   }
 });
 
+// ── Undo for deletions ──────────────────────────────────────────────────────────
+// Deleted widgets/triggers/scenes/media folders go onto an in-memory stack so a
+// slip can be undone (restores at the original list position, same id — so
+// scene overrides pointing at a restored widget come back too). Not persisted;
+// the stack clears on server restart.
+
+const undoStack = [];
+const UNDO_MAX  = 15;
+
+function pushUndo(kind, item, index, label) {
+  undoStack.push({ kind, item, index, label, at: Date.now() });
+  if (undoStack.length > UNDO_MAX) undoStack.shift();
+}
+
+app.get('/api/undo', basicAuth, (req, res) => {
+  const top = undoStack[undoStack.length - 1];
+  res.json({ available: undoStack.length, latest: top ? { kind: top.kind, label: top.label, at: top.at } : null });
+});
+
+app.post('/api/undo', basicAuth, (req, res) => {
+  const entry = undoStack.pop();
+  if (!entry) return res.status(404).json({ error: 'Nothing to undo' });
+  const insert = (arr) => arr.splice(Math.min(entry.index, arr.length), 0, entry.item);
+  switch (entry.kind) {
+    case 'widget':
+      insert(S.widgets);
+      broadcast({ type: 'widget_add', widget: entry.item });
+      break;
+    case 'trigger':
+      insert(S.triggers);
+      eventsub.refresh();
+      break;
+    case 'scene':
+      insert(S.scenes);
+      broadcast({ type: 'scenes', scenes: S.scenes });
+      break;
+    case 'mediaFolder':
+      insert(S.mediaFolders);
+      break;
+  }
+  saveConfig();
+  res.json({ ok: true, kind: entry.kind, label: entry.label, remaining: undoStack.length });
+});
+
 // ── Routes: triggers & alerts ───────────────────────────────────────────────────
 
 app.get('/api/triggers', basicAuth, (req, res) => {
@@ -945,10 +991,11 @@ app.put('/api/triggers/:id', basicAuth, (req, res) => {
 app.delete('/api/triggers/:id', basicAuth, (req, res) => {
   const idx = S.triggers.findIndex(t => t.id === req.params.id);
   if (idx < 0) return res.status(404).json({ error: 'not found' });
-  S.triggers.splice(idx, 1);
+  const [trigger] = S.triggers.splice(idx, 1);
+  pushUndo('trigger', trigger, idx, trigger.name);
   saveConfig();
   eventsub.refresh();
-  res.json({ ok: true });
+  res.json({ ok: true, undo: { kind: 'trigger', label: trigger.name } });
 });
 
 app.post('/api/triggers/:id/test', basicAuth, (req, res) => {
@@ -1024,9 +1071,10 @@ app.post('/api/media/folders', basicAuth, (req, res) => {
 app.delete('/api/media/folders/:id', basicAuth, (req, res) => {
   const idx = S.mediaFolders.findIndex(f => f.id === req.params.id);
   if (idx < 0) return res.status(404).json({ error: 'not found' });
-  S.mediaFolders.splice(idx, 1);
+  const [folder] = S.mediaFolders.splice(idx, 1);
+  pushUndo('mediaFolder', folder, idx, folder.label);
   saveConfig();
-  res.json({ ok: true });
+  res.json({ ok: true, undo: { kind: 'mediaFolder', label: folder.label } });
 });
 
 // Public: the overlay loads alert media from here without auth.

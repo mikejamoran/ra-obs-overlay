@@ -307,6 +307,21 @@ input[type=color] {
 .media-src-row { display: flex; gap: 8px; align-items: flex-end; }
 .media-src-row .field { flex: 1; }
 
+/* Undo toast */
+#undoToast {
+  position: fixed; bottom: 20px; right: 20px; z-index: 1100;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px 16px; display: flex; align-items: center; gap: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5); font-size: 13px;
+  transform: translateY(80px); opacity: 0; transition: all .25s ease; pointer-events: none;
+}
+#undoToast.show { transform: none; opacity: 1; pointer-events: auto; }
+#undoToast button {
+  background: var(--accent); border: none; border-radius: 6px; color: #fff;
+  padding: 6px 16px; font-size: 13px; font-weight: 700; cursor: pointer;
+}
+#undoToast .closex { background: none; color: var(--muted); padding: 2px 4px; font-weight: 400; }
+
 /* Divider */
 .divider { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
 
@@ -981,6 +996,13 @@ TWITCH_CLIENT_SECRET=paste_secret_here</pre>
 </main>
 </div>
 
+<!-- ── Undo toast ─────────────────────────────────────────────────────────────── -->
+<div id="undoToast">
+  <span id="undoToastLabel">Deleted</span>
+  <button onclick="doUndo()">↺ Undo</button>
+  <button class="closex" onclick="hideUndoToast()">✕</button>
+</div>
+
 <!-- ── Media picker modal ─────────────────────────────────────────────────────── -->
 <div id="mediaPicker" class="media-picker hidden" onclick="if(event.target===this)closeMediaPicker()">
   <div class="media-picker-box">
@@ -1019,6 +1041,50 @@ function updateRefreshInfo(sec) {
   const el = document.getElementById('refreshInfo');
   if (el) el.textContent = 'Achievements refresh every ' + sec + 's';
 }
+
+// ── Undo for deletions ────────────────────────────────────────────────────────
+
+const UNDO_KIND_NAMES = { widget: 'widget', trigger: 'trigger', scene: 'scene', mediaFolder: 'media folder' };
+let undoToastTimer = null;
+
+function showUndoToast(undo) {
+  if (!undo) return;
+  document.getElementById('undoToastLabel').textContent =
+    `🗑 Deleted ${UNDO_KIND_NAMES[undo.kind] || ''} “${undo.label}”`;
+  document.getElementById('undoToast').classList.add('show');
+  clearTimeout(undoToastTimer);
+  undoToastTimer = setTimeout(hideUndoToast, 10_000);
+}
+
+function hideUndoToast() {
+  clearTimeout(undoToastTimer);
+  document.getElementById('undoToast').classList.remove('show');
+}
+
+async function doUndo() {
+  hideUndoToast();
+  const res = await api('/api/undo', 'POST');
+  if (res.error) return;
+  if (res.kind === 'widget')      await loadWidgets();
+  if (res.kind === 'trigger')     await loadTriggers();
+  if (res.kind === 'scene')       await loadScenes();
+  if (res.kind === 'mediaFolder') await loadMediaFolders();
+  // scene rows list widgets, so refresh them after a widget comes back
+  if (res.kind === 'widget') renderSceneList();
+  if (res.remaining > 0) {
+    const peek = await api('/api/undo');
+    if (peek.latest) showUndoToast(peek.latest);
+  }
+}
+
+// Ctrl/Cmd+Z anywhere on the page (outside text fields) undoes the last delete
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z'
+      && !['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) {
+    e.preventDefault();
+    doUndo();
+  }
+});
 
 switchTab((() => { try { return localStorage.getItem('setupTab') || 'ra'; } catch { return 'ra'; } })());
 
@@ -1384,11 +1450,12 @@ async function addWidget(type) {
 }
 
 async function deleteWidget(id) {
-  if (!confirm('Delete this widget?')) return;
-  await api('/api/widgets/' + id, 'DELETE');
+  const res = await api('/api/widgets/' + id, 'DELETE');
   widgetList = widgetList.filter(w => w.id !== id);
   renderWidgetLayers();
+  renderSceneList();
   document.getElementById('widgetsTag').textContent = widgetList.length + ' widgets';
+  showUndoToast(res.undo);
 }
 
 async function updateWidget(id, patch) {
@@ -1816,9 +1883,9 @@ async function addMediaFolder() {
 }
 
 async function deleteMediaFolder(id) {
-  if (!confirm('Remove this folder from the media library? (No files are deleted.)')) return;
-  await api('/api/media/folders/' + id, 'DELETE');
+  const res = await api('/api/media/folders/' + id, 'DELETE');
   loadMediaFolders();
+  showUndoToast(res.undo);
 }
 
 // ── Media picker ──────────────────────────────────────────────────────────────
@@ -1899,10 +1966,10 @@ async function addScene() {
 }
 
 async function deleteScene(id) {
-  if (!confirm('Delete this scene? Browser sources using its URL will fall back to the base layout.')) return;
-  await api('/api/scenes/' + id, 'DELETE');
+  const res = await api('/api/scenes/' + id, 'DELETE');
   sceneList = sceneList.filter(s => s.id !== id);
   renderSceneList();
+  showUndoToast(res.undo);
 }
 
 async function renameScene(id, name) {
@@ -2071,10 +2138,10 @@ async function addTrigger(type) {
 }
 
 async function deleteTrigger(id) {
-  if (!confirm('Delete this trigger?')) return;
-  await api('/api/triggers/' + id, 'DELETE');
+  const res = await api('/api/triggers/' + id, 'DELETE');
   triggerList = triggerList.filter(t => t.id !== id);
   renderTriggerList();
+  showUndoToast(res.undo);
 }
 
 async function updateTrigger(id, patch) {
