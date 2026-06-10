@@ -66,6 +66,8 @@ let S = {
   twitchUserId:       null,
   twitchScopes:       [],
   twitchNeedsReauth:  false,
+  kofiToken:          '',     // Ko-fi webhook verification token (persisted)
+  kofiLastEvent:      null,   // runtime: { at, type, from, amount, currency } for the setup UI
   lastAchRefresh:  0,
   lastGameCheck:   0,
   nowPlayingId:    null,
@@ -93,6 +95,7 @@ function loadConfig() {
       if (saved.twitchRefreshToken) S.twitchRefreshToken = saved.twitchRefreshToken;
       if (saved.twitchUserId)       S.twitchUserId       = saved.twitchUserId;
       if (saved.twitchScopes)       S.twitchScopes       = saved.twitchScopes;
+      if (saved.kofiToken)          S.kofiToken          = saved.kofiToken;
     } catch (e) { console.error('[config] Load error:', e.message); }
   }
   if (process.env.RA_USERNAME)    S.creds.username = process.env.RA_USERNAME;
@@ -109,6 +112,7 @@ function saveConfig() {
       twitchChannel: S.twitchChannel,
       twitchAccessToken: S.twitchAccessToken, twitchRefreshToken: S.twitchRefreshToken,
       twitchUserId: S.twitchUserId, twitchScopes: S.twitchScopes,
+      kofiToken: S.kofiToken,
     }, null, 2));
   } catch (e) { console.error('[config] Save error:', e.message); }
 }
@@ -585,6 +589,7 @@ const upload = multer({
 
 app.set('trust proxy', 1); // trust Caddy's X-Forwarded-Proto so req.protocol returns 'https'
 app.use(express.json({ limit: '5mb' })); // backup imports can exceed the 100kb default
+app.use(express.urlencoded({ extended: false, limit: '1mb' })); // Ko-fi webhooks are form-encoded
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ── Routes: pages ───────────────────────────────────────────────────────────────
@@ -665,6 +670,7 @@ app.get('/api/config', basicAuth, (req, res) => {
     nowPlayingId: S.nowPlayingId, nowPlayingTitle: S.nowPlayingTitle,
     widgets: S.widgets,
     twitch: { ...twitchStatus(), scopes: S.twitchScopes, missingScopes: eventsub.missingScopes() },
+    kofi: { configured: !!S.kofiToken, lastEvent: S.kofiLastEvent },
   });
 });
 
@@ -1024,6 +1030,53 @@ app.delete('/api/media/folders/:id', basicAuth, (req, res) => {
 
 // Public: the overlay loads alert media from here without auth.
 app.get('/media/:folderId/:filename', (req, res) => media.serveFolderFile(req, res));
+
+// ── Routes: Ko-fi webhook ───────────────────────────────────────────────────────
+// Ko-fi POSTs form-encoded with a single `data` field containing JSON:
+// { verification_token, message_id, timestamp, type, is_public, from_name,
+//   message, amount, currency, url, email, is_subscription_payment,
+//   is_first_subscription_payment, kofi_transaction_id, tier_name, shop_items }
+// type ∈ Donation | Subscription | Commission | Shop Order.
+// Set the URL at https://ko-fi.com/manage/webhooks and paste the verification
+// token into the setup page — events without a matching token are rejected.
+
+app.post('/webhooks/kofi', (req, res) => {
+  let d = req.body || {};
+  if (typeof d.data === 'string') {
+    try { d = JSON.parse(d.data); }
+    catch { return res.status(400).json({ error: 'Malformed data field' }); }
+  }
+  if (!S.kofiToken) {
+    console.warn('[Ko-fi] Webhook received but no verification token is configured — ignoring. Set it in the setup page.');
+    return res.status(403).json({ error: 'No verification token configured' });
+  }
+  if (d.verification_token !== S.kofiToken) {
+    console.warn('[Ko-fi] Webhook rejected: verification token mismatch');
+    return res.status(401).json({ error: 'Bad verification token' });
+  }
+
+  // Respect the supporter's privacy choice: hide name and message unless public
+  const isPublic = d.is_public !== false;
+  const evt = {
+    type:     'kofi',
+    user:     (isPublic && d.from_name) ? d.from_name : 'Anonymous',
+    amount:   d.amount || '0',
+    currency: d.currency || '',
+    message:  isPublic ? (d.message || '') : '',
+    tier:     d.tier_name || '',
+    kofiType: d.type || 'Donation',
+  };
+  S.kofiLastEvent = { at: Date.now(), type: evt.kofiType, from: evt.user, amount: evt.amount, currency: evt.currency };
+  console.log(`[Ko-fi] ${evt.kofiType}: ${evt.user} — ${evt.amount} ${evt.currency}`);
+  triggers.handleEvent(evt);
+  res.json({ ok: true });
+});
+
+app.post('/api/kofi', basicAuth, (req, res) => {
+  S.kofiToken = ((req.body || {}).token || '').trim();
+  saveConfig();
+  res.json({ ok: true, configured: !!S.kofiToken });
+});
 
 // ── Routes: Twitch OAuth 2.0 ────────────────────────────────────────────────────
 

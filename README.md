@@ -98,6 +98,7 @@ combination of **image/GIF/WebM + sound + text** — from Twitch events:
 | 🚀 Raid | Twitch reconnect (new scopes) | minimum viewers |
 | 💜 Follow | Twitch reconnect (new scopes) | — |
 | 🏆 RA Achievement unlock | nothing (RA only) | minimum points |
+| ☕ Ko-fi donation | Ko-fi webhook (see below) | amount tiers or exact amount, payment type filter |
 
 - **Queue** — alerts play one at a time. The [Control Panel](http://localhost:7890/control)
   shows what's playing and queued, with **Skip**, **Clear queue**, and a **▶ Test**
@@ -121,6 +122,24 @@ Alert media comes from two places (both browsable via the **Choose…** picker):
    from `/media/<folder-id>/<file>`; subfolders are ignored.
    ⚠ Anyone who can reach the server can fetch files in shared folders — only
    share folders that contain stream media.
+
+### Ko-fi donations
+
+The ☕ Ko-fi card on the setup page connects [Ko-fi](https://ko-fi.com) webhooks:
+set the shown URL at **ko-fi.com/manage/webhooks**, paste the *Verification
+Token* from Ko-fi's Advanced section, and use Ko-fi's **Send Test** button to
+confirm. Events without a valid token are rejected.
+
+Each donation carries the supporter's **name, message, amount, currency** and
+membership **tier** — available as `{user}`, `{message}`, `{amount}`,
+`{currency}`, `{tier}` in alert templates. Supporters who untick "public" on
+Ko-fi appear as *Anonymous* with their message hidden. Create several Ko-fi
+triggers for amount tiers (e.g. 2 / 5 / 10) — the highest matching tier wins
+and exact amounts beat tiers; triggers can also filter by payment type
+(Donation / Subscription / Shop Order / Commission).
+
+Ko-fi must be able to reach the server from the internet — fine on a public
+server; a home PC needs a tunnel (ngrok / cloudflared).
 
 ### Video alerts
 

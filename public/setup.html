@@ -395,7 +395,7 @@ input[type=color] {
   <nav class="tab-bar">
     <button class="tab-btn" id="tabbtn-ra"      onclick="switchTab('ra')">🏆 RetroAchievements</button>
     <button class="tab-btn" id="tabbtn-overlay" onclick="switchTab('overlay')">🧩 Overlay &amp; Widgets</button>
-    <button class="tab-btn" id="tabbtn-twitch"  onclick="switchTab('twitch')">🟣 Twitch &amp; Alerts</button>
+    <button class="tab-btn" id="tabbtn-twitch"  onclick="switchTab('twitch')">🔔 Alerts &amp; Integrations</button>
   </nav>
 
   <!-- ════ Tab: RetroAchievements ════ -->
@@ -898,6 +898,41 @@ TWITCH_CLIENT_SECRET=paste_secret_here</pre>
     </div>
   </div>
 
+  <!-- ── Ko-fi ───────────────────────────────────────────────────────────────── -->
+  <div class="card" id="card-kofi">
+    <div class="card-header">
+      <h2>☕ Ko-fi Donations</h2>
+      <span class="tag" id="kofiTag">Not configured</span>
+    </div>
+    <div class="card-body">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.7">
+        Fire alerts when someone buys you a coffee. Ko-fi sends the supporter's
+        <strong style="color:var(--text)">name, message, amount and currency</strong>
+        (and membership tier) — supporters who choose to stay private appear as "Anonymous"
+        with their message hidden.
+      </div>
+      <ol style="font-size:12px;color:var(--muted);line-height:2;padding-left:18px;margin-bottom:14px">
+        <li>Go to <a href="https://ko-fi.com/manage/webhooks" target="_blank">ko-fi.com/manage/webhooks</a></li>
+        <li>Paste this as the Webhook URL:
+          <code style="background:var(--bg);padding:2px 6px;border-radius:4px;cursor:pointer" id="kofiWebhookUrl"
+            title="Click to copy" onclick="navigator.clipboard.writeText(this.textContent)"></code></li>
+        <li>Expand <strong style="color:var(--text)">Advanced</strong>, copy the
+          <strong style="color:var(--text)">Verification Token</strong> and paste it below</li>
+        <li>Use Ko-fi's <strong style="color:var(--text)">Send Test</strong> button to check the connection</li>
+      </ol>
+      <div class="field-row">
+        <div class="field" style="max-width:340px"><label>Verification token</label>
+          <input type="password" id="kofiToken" placeholder="paste from Ko-fi advanced settings"></div>
+      </div>
+      <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="saveKofiToken()">Save</button>
+      <div id="kofiStatus" style="font-size:12px;color:var(--muted);margin-top:10px"></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.6">
+        ⚠ Ko-fi must be able to reach this server from the internet — works out of the box on a
+        public server; on a home PC you'd need a tunnel (e.g. ngrok / cloudflared).
+      </div>
+    </div>
+  </div>
+
   <!-- ── Alerts & Triggers ───────────────────────────────────────────────────── -->
   <div class="card" id="card-alerts">
     <div class="card-header">
@@ -928,6 +963,7 @@ TWITCH_CLIENT_SECRET=paste_secret_here</pre>
           <button class="btn btn-sm" onclick="addTrigger('raid')">🚀 Raid</button>
           <button class="btn btn-sm" onclick="addTrigger('follow')">💜 Follow</button>
           <button class="btn btn-sm" onclick="addTrigger('achievement')">🏆 RA Achievement</button>
+          <button class="btn btn-sm" onclick="addTrigger('kofi')">☕ Ko-fi Donation</button>
         </div>
       </div>
 
@@ -1979,11 +2015,12 @@ let triggerList = [];
 
 const TRIGGER_ICONS = {
   channel_points: '🎁', cheer: '💎', chat_command: '❗',
-  subscription: '⭐', raid: '🚀', follow: '💜', achievement: '🏆',
+  subscription: '⭐', raid: '🚀', follow: '💜', achievement: '🏆', kofi: '☕',
 };
 const TRIGGER_TYPE_NAMES = {
   channel_points: 'Channel Points', cheer: 'Bits', chat_command: 'Chat Command',
   subscription: 'Subscription', raid: 'Raid', follow: 'Follow', achievement: 'RA Achievement',
+  kofi: 'Ko-fi Donation',
 };
 const TRIGGER_DEFAULT_TEMPLATES = {
   channel_points: '{user} redeemed {reward}!',
@@ -1993,6 +2030,7 @@ const TRIGGER_DEFAULT_TEMPLATES = {
   raid:           '{user} is raiding with {viewers} viewers!',
   follow:         '{user} just followed!',
   achievement:    '🏆 Achievement unlocked: {achievement} ({points} pts)',
+  kofi:           '☕ {user} bought a coffee! ({amount} {currency}) {message}',
 };
 const TEMPLATE_HINTS = {
   channel_points: '{user} {reward} {message} {channel}',
@@ -2002,6 +2040,7 @@ const TEMPLATE_HINTS = {
   raid:           '{user} {viewers} {channel}',
   follow:         '{user} {channel}',
   achievement:    '{achievement} {points} {description} {game} {channel}',
+  kofi:           '{user} {amount} {currency} {message} {tier} {channel}',
 };
 
 async function loadTriggers() {
@@ -2220,6 +2259,27 @@ function buildTriggerSettings(t) {
           oninput="updateTrigger('${t.id}',{source:{minViewers:parseInt(this.value)||0}})"></div>`;
   } else if (s.type === 'follow') {
     html += `<div style="font-size:12px;color:var(--muted);margin-bottom:8px">Fires for every new follower.</div>`;
+  } else if (s.type === 'kofi') {
+    html += `
+      <div class="field-row">
+        <div class="field"><label>Match</label>
+          <select onchange="updateTrigger('${t.id}',{source:{matchType:this.value}})" style="width:100%;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text)">
+            <option value="min"${s.matchType !== 'exact' ? ' selected' : ''}>At least this amount</option>
+            <option value="exact"${s.matchType === 'exact' ? ' selected' : ''}>Exactly this amount</option>
+          </select></div>
+        <div class="field"><label>Amount (your Ko-fi currency, 0 = any)</label>
+          <input type="number" min="0" step="0.5" value="${s.minAmount || 0}"
+            oninput="updateTrigger('${t.id}',{source:{minAmount:parseFloat(this.value)||0}})"></div>
+        <div class="field"><label>Payment type</label>
+          <select onchange="updateTrigger('${t.id}',{source:{kofiType:this.value}})" style="width:100%;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text)">
+            ${['any','Donation','Subscription','Shop Order','Commission'].map(v =>
+              `<option value="${v}"${(s.kofiType || 'any') === v ? ' selected' : ''}>${v === 'any' ? 'Any' : v}</option>`).join('')}
+          </select></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">
+        Create several Ko-fi triggers for tiers (e.g. 2 / 5 / 10) — the highest matching tier wins;
+        exact amounts beat tiers. Configure the webhook in the ☕ Ko-fi card above.
+      </div>`;
   } else if (s.type === 'achievement') {
     html += `
       <div class="field" style="max-width:240px"><label>Minimum points <span style="font-weight:400;color:var(--muted)">(0 = every unlock)</span></label>
@@ -2385,6 +2445,28 @@ function buildTriggerSettings(t) {
   return el;
 }
 
+// ── Ko-fi ─────────────────────────────────────────────────────────────────────
+
+async function saveKofiToken() {
+  const token = document.getElementById('kofiToken').value.trim();
+  if (token.startsWith('•')) return; // masked placeholder — nothing new to save
+  const res = await api('/api/kofi', 'POST', { token });
+  setKofiStatus(res.configured, null);
+  document.getElementById('kofiStatus').textContent = res.configured
+    ? 'Token saved — use Ko-fi\'s "Send Test" button to verify, then add a ☕ trigger below.'
+    : 'Token cleared — Ko-fi events will be ignored.';
+}
+
+function setKofiStatus(configured, lastEvent) {
+  const tag = document.getElementById('kofiTag');
+  tag.textContent = configured ? '🟢 Configured' : 'Not configured';
+  tag.className = 'tag' + (configured ? ' green' : '');
+  if (lastEvent) {
+    document.getElementById('kofiStatus').textContent =
+      `Last event: ${lastEvent.type} from ${lastEvent.from} — ${lastEvent.amount} ${lastEvent.currency} (${new Date(lastEvent.at).toLocaleString()})`;
+  }
+}
+
 // ── Twitch ────────────────────────────────────────────────────────────────────
 
 async function twitchDisconnect() {
@@ -2420,6 +2502,12 @@ async function initExtended(cfg) {
   // Alerts need scopes the saved token may not have — prompt for re-auth
   if (cfg.twitch?.needsReauth || (cfg.twitch?.missingScopes || []).length) {
     document.getElementById('reauthBanner').classList.remove('hidden');
+  }
+  // Ko-fi card
+  document.getElementById('kofiWebhookUrl').textContent = window.location.origin + '/webhooks/kofi';
+  if (cfg.kofi) {
+    setKofiStatus(cfg.kofi.configured, cfg.kofi.lastEvent);
+    if (cfg.kofi.configured) document.getElementById('kofiToken').value = '••••••••••';
   }
   // Achievement panel controls
   const visBtn  = document.getElementById('ach-vis-btn');
