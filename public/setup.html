@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>RA Achievement Overlay — Setup</title>
+<title>Stream Overlay — Setup</title>
 <style>
 :root {
   --bg:      #0d1117;
@@ -43,6 +43,18 @@ a:hover { text-decoration: underline; }
   padding: 20px 0;
 }
 .main { flex: 1; padding: 24px; max-width: 860px; }
+
+/* Tab navigation */
+.tab-bar { display: flex; gap: 8px; margin-bottom: 18px; position: sticky; top: 0; z-index: 50; background: var(--bg); padding: 10px 0; border-bottom: 1px solid var(--border); }
+.tab-btn {
+  flex: 1; padding: 11px 14px; background: var(--surface); color: var(--muted);
+  border: 1px solid var(--border); border-radius: 8px;
+  font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.15s;
+}
+.tab-btn:hover { color: var(--text); border-color: var(--muted); }
+.tab-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.tab-page { display: none; }
+.tab-page.active { display: block; }
 
 /* Sidebar */
 .sb-title { padding: 0 20px 16px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
@@ -316,8 +328,8 @@ input[type=color] {
 <!-- ── Sidebar ──────────────────────────────────────────────────────────── -->
 <aside class="sidebar">
   <div class="sb-title">
-    <h1>RA Achievement Overlay</h1>
-    <div class="sub">OBS Browser Source</div>
+    <h1>Stream Overlay</h1>
+    <div class="sub">RetroAchievements · Widgets · Twitch Alerts</div>
   </div>
 
   <div class="status-row">
@@ -351,15 +363,15 @@ input[type=color] {
   </div>
 
   <div class="sb-section">
-    <label>Widgets &amp; Layers</label>
-    <a href="#card-widgets" class="btn btn-sm" style="display:block;width:100%;text-align:center;margin-bottom:6px">⚙ Manage Widgets</a>
+    <label>Quick Links</label>
+    <a href="#" class="btn btn-sm" style="display:block;width:100%;text-align:center;margin-bottom:6px" onclick="goTo('overlay','card-widgets');return false">⚙ Manage Widgets</a>
     <a href="/control" target="_blank" class="btn btn-sm" style="display:block;width:100%;text-align:center;margin-bottom:6px">🎮 Control Panel ↗</a>
-    <a href="#card-twitch" class="btn btn-sm" style="display:block;width:100%;text-align:center;margin-bottom:6px">🟣 Twitch Chat</a>
-    <a href="#card-alerts" class="btn btn-sm" style="display:block;width:100%;text-align:center">🔔 Alerts &amp; Triggers</a>
+    <a href="#" class="btn btn-sm" style="display:block;width:100%;text-align:center;margin-bottom:6px" onclick="goTo('twitch','card-twitch');return false">🟣 Twitch Connection</a>
+    <a href="#" class="btn btn-sm" style="display:block;width:100%;text-align:center" onclick="goTo('twitch','card-alerts');return false">🔔 Alerts &amp; Triggers</a>
   </div>
 
   <div class="sb-bottom">
-    <div class="refresh-info" id="refreshInfo">Achievements refresh every 2 min</div>
+    <div class="refresh-info" id="refreshInfo">Achievements refresh every 60s</div>
     <button class="btn btn-sm" style="margin-top:8px;width:100%" onclick="forceRefresh()">
       ↺ Force Refresh Now
     </button>
@@ -369,10 +381,19 @@ input[type=color] {
 <!-- ── Main ──────────────────────────────────────────────────────────────── -->
 <main class="main">
 
+  <nav class="tab-bar">
+    <button class="tab-btn" id="tabbtn-ra"      onclick="switchTab('ra')">🏆 RetroAchievements</button>
+    <button class="tab-btn" id="tabbtn-overlay" onclick="switchTab('overlay')">🧩 Overlay &amp; Widgets</button>
+    <button class="tab-btn" id="tabbtn-twitch"  onclick="switchTab('twitch')">🟣 Twitch &amp; Alerts</button>
+  </nav>
+
+  <!-- ════ Tab: RetroAchievements ════ -->
+  <div class="tab-page" id="tab-ra">
+
   <!-- Credentials -->
   <div class="card">
     <div class="card-header">
-      <h2>1 · RetroAchievements Credentials</h2>
+      <h2>RetroAchievements Credentials</h2>
       <span class="tag" id="credsTag">Required</span>
     </div>
     <div class="card-body">
@@ -402,7 +423,7 @@ input[type=color] {
   <!-- Game Selection -->
   <div class="card" id="gameCard">
     <div class="card-header">
-      <h2>2 · Game Selection</h2>
+      <h2>Game Selection</h2>
       <span class="tag" id="gameTag">No game selected</span>
     </div>
     <div class="card-body">
@@ -427,7 +448,7 @@ input[type=color] {
 
   <!-- What to Show -->
   <div class="card">
-    <div class="card-header"><h2>3 · What to Show</h2></div>
+    <div class="card-header"><h2>What to Show</h2></div>
     <div class="card-body">
       <div class="field">
         <label>Display Mode</label>
@@ -477,7 +498,7 @@ input[type=color] {
 
   <!-- Visual Style -->
   <div class="card">
-    <div class="card-header"><h2>4 · Visual Style</h2></div>
+    <div class="card-header"><h2>Visual Style</h2></div>
     <div class="card-body">
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
@@ -560,7 +581,7 @@ input[type=color] {
   <!-- Achievement Highlights -->
   <div class="card">
     <div class="card-header">
-      <h2>5 · Achievement Highlights &amp; Order</h2>
+      <h2>Highlights &amp; Order</h2>
       <span class="tag" id="achCountTag">—</span>
     </div>
     <div class="card-body">
@@ -582,7 +603,7 @@ input[type=color] {
 
   <!-- Recent Achievements Panel -->
   <div class="card">
-    <div class="card-header"><h2>6 · Recent Achievements Panel</h2></div>
+    <div class="card-header"><h2>Recently Earned Panel</h2></div>
     <div class="card-body">
       <div class="field">
         <label class="check-opt" id="recentEnabledOpt" style="width:fit-content">
@@ -643,10 +664,15 @@ input[type=color] {
     </div>
   </div>
 
+  </div><!-- /tab-ra -->
+
+  <!-- ════ Tab: Overlay & Widgets ════ -->
+  <div class="tab-page" id="tab-overlay">
+
   <!-- ── Widgets & Layers ──────────────────────────────────────────────────── -->
   <div class="card" id="card-widgets">
     <div class="card-header">
-      <h2>7 · Widgets &amp; Layers</h2>
+      <h2>Widgets &amp; Layers</h2>
       <span class="tag" id="widgetsTag">0 widgets</span>
     </div>
     <div class="card-body">
@@ -727,10 +753,68 @@ input[type=color] {
     </div>
   </div>
 
-  <!-- ── Twitch Chat ─────────────────────────────────────────────────────────── -->
+  <!-- ── Animations & Refresh ─────────────────────────────────────────────── -->
+  <div class="card" id="card-animations">
+    <div class="card-header"><h2>Animations &amp; Refresh</h2></div>
+    <div class="card-body">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.6">
+        How overlay elements (achievement panel, widgets) appear and disappear,
+        and how often achievement progress is checked.
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Element animation in</label>
+          <select id="elemAnimIn" onchange="setDisplay('elemAnimIn', this.value)" style="width:100%;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text)">
+            <option value="fade">Fade</option>
+            <option value="slide-up">Slide up</option>
+            <option value="slide-down">Slide down</option>
+            <option value="slide-left">Swipe from right</option>
+            <option value="slide-right">Swipe from left</option>
+            <option value="pop">Pop</option>
+            <option value="none">None</option>
+          </select></div>
+        <div class="field"><label>Element animation out</label>
+          <select id="elemAnimOut" onchange="setDisplay('elemAnimOut', this.value)" style="width:100%;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text)">
+            <option value="fade">Fade</option>
+            <option value="slide-up">Slide down &amp; out</option>
+            <option value="slide-down">Slide up &amp; out</option>
+            <option value="slide-left">Swipe out right</option>
+            <option value="slide-right">Swipe out left</option>
+            <option value="pop">Shrink</option>
+            <option value="none">None</option>
+          </select></div>
+      </div>
+      <label class="check-opt" id="unlockFlashOpt" style="width:fit-content;margin-bottom:10px">
+        <input type="checkbox" id="unlockFlash" checked onchange="setDisplay('unlockFlash', this.checked);this.closest('.check-opt').classList.toggle('active',this.checked)">
+        Golden flash on freshly unlocked achievements
+      </label>
+      <label class="check-opt" id="showRpOpt" style="width:fit-content;margin-bottom:12px">
+        <input type="checkbox" id="showRichPresence" onchange="setDisplay('showRichPresence', this.checked);this.closest('.check-opt').classList.toggle('active',this.checked)">
+        Show live Rich Presence in the panel header (in-game status / progress from RA)
+      </label>
+      <div class="field" style="max-width:240px"><label>Achievement refresh interval (seconds)</label>
+        <input type="number" min="15" max="600" id="refreshSec" value="60"
+          onchange="const v=Math.max(15, parseInt(this.value)||60);setDisplay('refreshSec', v);updateRefreshInfo(v)">
+        <div style="font-size:11px;color:var(--muted);margin-top:5px">
+          Lower = unlocks &amp; progress appear sooner. 15s minimum to respect RA API limits.
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.6">
+        💡 Tip: to also play a sound or image when you unlock an achievement, add a
+        <strong style="color:var(--text)">🏆 RA Achievement</strong> trigger in
+        <a href="#" onclick="goTo('twitch','card-alerts');return false">Alerts &amp; Triggers</a>.
+      </div>
+    </div>
+  </div>
+
+  </div><!-- /tab-overlay -->
+
+  <!-- ════ Tab: Twitch & Alerts ════ -->
+  <div class="tab-page" id="tab-twitch">
+
+  <!-- ── Twitch Connection ───────────────────────────────────────────────────── -->
   <div class="card" id="card-twitch">
     <div class="card-header">
-      <h2>8 · Twitch Chat</h2>
+      <h2>Twitch Connection</h2>
       <span class="tag" id="twitchTag">Not connected</span>
     </div>
     <div class="card-body">
@@ -778,7 +862,7 @@ TWITCH_CLIENT_SECRET=paste_secret_here</pre>
   <!-- ── Alerts & Triggers ───────────────────────────────────────────────────── -->
   <div class="card" id="card-alerts">
     <div class="card-header">
-      <h2>9 · Alerts &amp; Triggers</h2>
+      <h2>Alerts &amp; Triggers</h2>
       <span class="tag" id="triggersTag">0 triggers</span>
     </div>
     <div class="card-body">
@@ -791,7 +875,8 @@ TWITCH_CLIENT_SECRET=paste_secret_here</pre>
         Alerts queue and play one at a time — skip, clear and test them from the
         <a href="/control" target="_blank">Control Panel ↗</a>.
         Channel points, subs, raids and follows need the expanded Twitch connection above;
-        bits and chat commands work with the basic chat connection.
+        bits and chat commands work with the basic chat connection, and
+        🏆 RA Achievement triggers need no Twitch at all.
       </div>
 
       <div style="margin-bottom:16px">
@@ -803,6 +888,7 @@ TWITCH_CLIENT_SECRET=paste_secret_here</pre>
           <button class="btn btn-sm" onclick="addTrigger('subscription')">⭐ Subscription</button>
           <button class="btn btn-sm" onclick="addTrigger('raid')">🚀 Raid</button>
           <button class="btn btn-sm" onclick="addTrigger('follow')">💜 Follow</button>
+          <button class="btn btn-sm" onclick="addTrigger('achievement')">🏆 RA Achievement</button>
         </div>
       </div>
 
@@ -812,6 +898,8 @@ TWITCH_CLIENT_SECRET=paste_secret_here</pre>
       </div>
     </div>
   </div>
+
+  </div><!-- /tab-twitch -->
 
 </main>
 </div>
@@ -836,6 +924,26 @@ let display = {};
 let achievements = [];
 let pinnedIds = new Set();
 let gameList  = [];
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+
+function switchTab(name) {
+  document.querySelectorAll('.tab-page').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.id === 'tabbtn-' + name));
+  try { localStorage.setItem('setupTab', name); } catch {}
+}
+
+function goTo(tab, cardId) {
+  switchTab(tab);
+  setTimeout(() => document.getElementById(cardId)?.scrollIntoView({ behavior: 'smooth' }), 50);
+}
+
+function updateRefreshInfo(sec) {
+  const el = document.getElementById('refreshInfo');
+  if (el) el.textContent = 'Achievements refresh every ' + sec + 's';
+}
+
+switchTab((() => { try { return localStorage.getItem('setupTab') || 'ra'; } catch { return 'ra'; } })());
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
@@ -1690,11 +1798,11 @@ let triggerList = [];
 
 const TRIGGER_ICONS = {
   channel_points: '🎁', cheer: '💎', chat_command: '❗',
-  subscription: '⭐', raid: '🚀', follow: '💜',
+  subscription: '⭐', raid: '🚀', follow: '💜', achievement: '🏆',
 };
 const TRIGGER_TYPE_NAMES = {
   channel_points: 'Channel Points', cheer: 'Bits', chat_command: 'Chat Command',
-  subscription: 'Subscription', raid: 'Raid', follow: 'Follow',
+  subscription: 'Subscription', raid: 'Raid', follow: 'Follow', achievement: 'RA Achievement',
 };
 const TRIGGER_DEFAULT_TEMPLATES = {
   channel_points: '{user} redeemed {reward}!',
@@ -1703,6 +1811,7 @@ const TRIGGER_DEFAULT_TEMPLATES = {
   subscription:   '{user} just subscribed!',
   raid:           '{user} is raiding with {viewers} viewers!',
   follow:         '{user} just followed!',
+  achievement:    '🏆 Achievement unlocked: {achievement} ({points} pts)',
 };
 const TEMPLATE_HINTS = {
   channel_points: '{user} {reward} {message} {channel}',
@@ -1711,6 +1820,7 @@ const TEMPLATE_HINTS = {
   subscription:   '{user} {tier} {amount} {message} {channel}',
   raid:           '{user} {viewers} {channel}',
   follow:         '{user} {channel}',
+  achievement:    '{achievement} {points} {description} {channel}',
 };
 
 async function loadTriggers() {
@@ -1888,6 +1998,14 @@ function buildTriggerSettings(t) {
           oninput="updateTrigger('${t.id}',{source:{minViewers:parseInt(this.value)||0}})"></div>`;
   } else if (s.type === 'follow') {
     html += `<div style="font-size:12px;color:var(--muted);margin-bottom:8px">Fires for every new follower.</div>`;
+  } else if (s.type === 'achievement') {
+    html += `
+      <div class="field" style="max-width:240px"><label>Minimum points <span style="font-weight:400;color:var(--muted)">(0 = every unlock)</span></label>
+        <input type="number" min="0" value="${s.minPoints || 0}"
+          oninput="updateTrigger('${t.id}',{source:{minPoints:parseInt(this.value)||0}})"></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">
+        Fires when you unlock a RetroAchievements achievement on the tracked game. No Twitch connection needed.
+      </div>`;
   }
 
   html += `<hr class="divider"><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Then — show / play</div>`;
@@ -2003,7 +2121,7 @@ function buildTriggerSettings(t) {
         </select></div>
       <div class="field"><label>Animation out</label>
         <select onchange="updateTrigger('${t.id}',{actions:{animation:{out:this.value}}})" style="width:100%;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text)">
-          ${['fade','none'].map(v => `<option value="${v}"${a.animation.out === v ? ' selected' : ''}>${v}</option>`).join('')}
+          ${['fade','slide-up','slide-down','slide-left','slide-right','pop','none'].map(v => `<option value="${v}"${a.animation.out === v ? ' selected' : ''}>${v}</option>`).join('')}
         </select></div>
     </div>
     <button class="btn btn-sm" style="margin-top:4px" onclick="testTrigger('${t.id}')">▶ Test this alert</button>`;
@@ -2056,6 +2174,19 @@ async function initExtended(cfg) {
   if (cfg.display?.panelLocked) { lockBtn?.classList.add('active'); if(lockBtn) lockBtn.textContent='🔒'; }
   document.getElementById('panelHInput').value = cfg.display?.panelH || 600;
   document.getElementById('panelZInput').value = cfg.display?.panelZIndex || 10;
+
+  // Animations & refresh card
+  const d = cfg.display || {};
+  document.getElementById('elemAnimIn').value  = d.elemAnimIn  ?? 'fade';
+  document.getElementById('elemAnimOut').value = d.elemAnimOut ?? 'fade';
+  document.getElementById('refreshSec').value  = d.refreshSec  ?? 60;
+  const flashChk = document.getElementById('unlockFlash');
+  flashChk.checked = d.unlockFlash !== false;
+  flashChk.closest('.check-opt').classList.toggle('active', flashChk.checked);
+  const rpChk = document.getElementById('showRichPresence');
+  rpChk.checked = !!d.showRichPresence;
+  rpChk.closest('.check-opt').classList.toggle('active', rpChk.checked);
+  updateRefreshInfo(d.refreshSec ?? 60);
 
   await loadWidgets();
   await loadUploads();

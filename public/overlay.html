@@ -321,15 +321,35 @@ html, body {
   text-align: center; font-weight: 700; line-height: 1.3;
   max-width: 80vw; overflow-wrap: break-word;
 }
-.anim-in-fade       { animation: alertFade    0.4s ease both; }
-.anim-in-slide-up   { animation: alertSlideUp 0.4s cubic-bezier(0.22,1,0.36,1) both; }
-.anim-in-slide-down { animation: alertSlideDn 0.4s cubic-bezier(0.22,1,0.36,1) both; }
-.anim-in-pop        { animation: alertPop     0.45s cubic-bezier(0.34,1.56,0.64,1) both; }
-.anim-out-fade      { animation: alertFade    0.4s ease reverse both; }
+/* Shared in/out animations — used by alerts, widgets, and the achievement panel */
+.anim-in-fade        { animation: alertFade    0.4s ease both; }
+.anim-in-slide-up    { animation: alertSlideUp 0.4s cubic-bezier(0.22,1,0.36,1) both; }
+.anim-in-slide-down  { animation: alertSlideDn 0.4s cubic-bezier(0.22,1,0.36,1) both; }
+.anim-in-slide-left  { animation: alertSlideL  0.4s cubic-bezier(0.22,1,0.36,1) both; }
+.anim-in-slide-right { animation: alertSlideR  0.4s cubic-bezier(0.22,1,0.36,1) both; }
+.anim-in-pop         { animation: alertPop     0.45s cubic-bezier(0.34,1.56,0.64,1) both; }
+.anim-out-fade        { animation: alertFade    0.4s ease reverse both; }
+.anim-out-slide-up    { animation: alertSlideUp 0.4s ease reverse both; }
+.anim-out-slide-down  { animation: alertSlideDn 0.4s ease reverse both; }
+.anim-out-slide-left  { animation: alertSlideL  0.4s ease reverse both; }
+.anim-out-slide-right { animation: alertSlideR  0.4s ease reverse both; }
+.anim-out-pop         { animation: alertPop     0.4s ease reverse both; }
 @keyframes alertFade    { from { opacity: 0; } to { opacity: 1; } }
 @keyframes alertSlideUp { from { opacity: 0; transform: translateY(48px); }  to { opacity: 1; transform: none; } }
 @keyframes alertSlideDn { from { opacity: 0; transform: translateY(-48px); } to { opacity: 1; transform: none; } }
+@keyframes alertSlideL  { from { opacity: 0; transform: translateX(48px); }  to { opacity: 1; transform: none; } }
+@keyframes alertSlideR  { from { opacity: 0; transform: translateX(-48px); } to { opacity: 1; transform: none; } }
 @keyframes alertPop     { from { opacity: 0; transform: scale(0.4); }        to { opacity: 1; transform: scale(1); } }
+
+/* Unlock flash — golden pulse on a freshly earned achievement */
+.ach-flash { animation: achFlash 0.9s ease-in-out 4; }
+@keyframes achFlash {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(227,179,65,0); border-color: rgba(255,255,255,0.08); }
+  50%      { box-shadow: 0 0 18px 4px rgba(227,179,65,0.85); border-color: var(--gold-color, #e3b341); }
+}
+
+/* Rich presence line in the panel header */
+#game-rp { font-size: 11px; color: var(--gold-color, #e3b341); margin-top: 2px; line-height: 1.3; }
 </style>
 </head>
 <body>
@@ -374,10 +394,34 @@ function applyStyles(d) {
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-let state = { display: {}, achievements: [], gameInfo: {}, widgets: [], connected: false };
+let state = { display: {}, achievements: [], gameInfo: {}, widgets: [], connected: false, richPresence: '' };
 let dismissed = new Set();
 let achSortable = null;
 let resizeObservers = [];
+
+// Freshly unlocked achievement ids → flash until this timestamp
+const FLASH_MS = 4000;
+let flashIds = new Map();
+let firstRender = true;
+
+function elemAnimIn()  { return state.display.elemAnimIn  ?? 'fade'; }
+function elemAnimOut() { return state.display.elemAnimOut ?? 'fade'; }
+
+// Apply an entrance animation class (and clean it up so later transforms work)
+function animateIn(el) {
+  const style = elemAnimIn();
+  if (style === 'none') return;
+  el.classList.add('anim-in-' + style);
+  setTimeout(() => el.classList.remove('anim-in-' + style), 600);
+}
+
+// Play the exit animation, then run done() (e.g. hide or remove the element)
+function animateOut(el, done) {
+  const style = elemAnimOut();
+  if (style === 'none' || !el) { done(); return; }
+  el.classList.add('anim-out-' + style);
+  setTimeout(() => { el.classList.remove('anim-out-' + style); done(); }, 420);
+}
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 
@@ -409,12 +453,27 @@ function handleWS(msg) {
     patchWidget(msg.widget);
   } else if (msg.type === 'widget_add') {
     state.widgets.push(msg.widget);
-    if (msg.widget.visible) placeWidget(msg.widget);
+    if (msg.widget.visible) placeWidget(msg.widget, true);
   } else if (msg.type === 'widget_delete') {
     state.widgets = state.widgets.filter(w => w.id !== msg.id);
-    document.getElementById('w-' + msg.id)?.remove();
+    const el = document.getElementById('w-' + msg.id);
+    if (el) animateOut(el, () => el.remove());
   } else if (msg.type === 'chat_message') {
     appendChatMessage(msg);
+  } else if (msg.type === 'achievement_unlocked') {
+    // The full achievements broadcast follows; just remember which id to flash
+    if (state.display.unlockFlash !== false) {
+      flashIds.set(msg.achievement.id, Date.now() + FLASH_MS);
+      setTimeout(() => {
+        flashIds.delete(msg.achievement.id);
+        document.querySelectorAll(`[data-id="${msg.achievement.id}"]`).forEach(el => el.classList.remove('ach-flash'));
+      }, FLASH_MS);
+    }
+  } else if (msg.type === 'rich_presence') {
+    state.richPresence = msg.message;
+    const rp = document.getElementById('game-rp');
+    if (rp) rp.textContent = msg.message;
+    else if (msg.message) renderAchPanel();
   } else if (msg.type === 'achievements') {
     if (msg.achievements) state.achievements = msg.achievements;
     if (msg.gameInfo)     state.gameInfo     = msg.gameInfo;
@@ -434,8 +493,9 @@ function renderAll() {
   document.querySelectorAll('.widget').forEach(el => el.remove());
 
   for (const w of state.widgets) {
-    if (w.visible) placeWidget(w);
+    if (w.visible) placeWidget(w, firstRender);
   }
+  firstRender = false;
 }
 
 // ── Achievement panel ─────────────────────────────────────────────────────────
@@ -453,7 +513,12 @@ function renderAchPanel() {
     canvas.insertBefore(aw, canvas.firstChild);
   }
 
-  if (d.panelVisible === false) { aw.style.display = 'none'; return; }
+  const wasHidden = aw.style.display === 'none' || !aw.hasChildNodes();
+  if (d.panelVisible === false) {
+    if (!wasHidden) animateOut(aw.querySelector('#panel'), () => { aw.style.display = 'none'; });
+    else aw.style.display = 'none';
+    return;
+  }
   aw.style.display = '';
 
   // Position
@@ -487,7 +552,8 @@ function renderAchPanel() {
     if (gi.boxArt) { art.src = 'https://retroachievements.org' + gi.boxArt; art.style.display = 'block'; }
     const info = document.createElement('div');
     info.style.flex = '1';
-    info.innerHTML = `<div id="game-title">${escHtml(gi.title)}</div><div id="game-progress">${gi.earned || 0} / ${gi.numAch || 0} achievements</div>`;
+    info.innerHTML = `<div id="game-title">${escHtml(gi.title)}</div><div id="game-progress">${gi.earned || 0} / ${gi.numAch || 0} achievements</div>` +
+      (d.showRichPresence ? `<div id="game-rp">${escHtml(state.richPresence || '')}</div>` : '');
     hdr.appendChild(art);
     hdr.appendChild(info);
     panel.appendChild(hdr);
@@ -555,6 +621,7 @@ function renderAchPanel() {
 
   panel.appendChild(cont);
   aw.appendChild(panel);
+  if (wasHidden || firstRender) animateIn(panel);
 
   // Resize handle — re-appended each render so it stays on top
   let rh = document.getElementById('ach-resize');
@@ -597,7 +664,8 @@ function renderAchPanel() {
 function buildTile(a, d, pinned) {
   const el = document.createElement('div');
   el.dataset.id = a.id;
-  el.className  = 'tile' + (a.earned ? ' earned' : '') + (pinned.has(a.id) ? ' pinned' : '');
+  el.className  = 'tile' + (a.earned ? ' earned' : '') + (pinned.has(a.id) ? ' pinned' : '')
+                + (flashIds.has(a.id) ? ' ach-flash' : '');
 
   // Dismiss button
   const dis = document.createElement('button');
@@ -679,7 +747,9 @@ function buildTile(a, d, pinned) {
 
 function buildTextRow(a, d, pinned) {
   const el = document.createElement('div');
-  el.className = 'tile-text' + (a.earned ? ' earned' : '') + (pinned.has(a.id) ? ' pinned' : '');
+  el.dataset.id = a.id;
+  el.className = 'tile-text' + (a.earned ? ' earned' : '') + (pinned.has(a.id) ? ' pinned' : '')
+               + (flashIds.has(a.id) ? ' ach-flash' : '');
   const img = document.createElement('img');
   img.className = 'tile-text-badge' + (a.earned ? '' : ' locked');
   img.src = `${BADGE_BASE}/${a.badge}${a.earned ? '' : '_lock'}.png`;
@@ -843,7 +913,7 @@ const PLATFORM_ICONS = {
   tiktok:    `<svg width="22" height="22" viewBox="0 0 24 24" fill="#e6edf3"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.78 1.52V6.77a4.85 4.85 0 01-1.01-.08z"/></svg>`,
 };
 
-function placeWidget(widget) {
+function placeWidget(widget, animate) {
   const canvas = document.getElementById('canvas');
   document.getElementById('w-' + widget.id)?.remove();
 
@@ -866,12 +936,17 @@ function placeWidget(widget) {
   if (!widget.locked) makeDraggable(el, endpoint);
   makeResizable(el, endpoint);
   canvas.appendChild(el);
+  if (animate) animateIn(el);
 }
 
 function patchWidget(widget) {
   const el = document.getElementById('w-' + widget.id);
-  if (!el) { if (widget.visible) placeWidget(widget); return; }
-  if (!widget.visible) { el.style.display = 'none'; return; }
+  if (!el) { if (widget.visible) placeWidget(widget, true); return; }
+  if (!widget.visible) {
+    if (el.style.display !== 'none') animateOut(el, () => { el.style.display = 'none'; });
+    return;
+  }
+  if (el.style.display === 'none') { el.style.display = ''; animateIn(el); }
   el.style.display  = '';
   el.style.left     = widget.x + 'px';
   el.style.top      = widget.y + 'px';

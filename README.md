@@ -97,6 +97,7 @@ combination of **image/GIF/WebM + sound + text** — from Twitch events:
 | ⭐ Sub / resub / gift | Twitch reconnect (new scopes) | tier filter, include resubs/gifts |
 | 🚀 Raid | Twitch reconnect (new scopes) | minimum viewers |
 | 💜 Follow | Twitch reconnect (new scopes) | — |
+| 🏆 RA Achievement unlock | nothing (RA only) | minimum points |
 
 - **Queue** — alerts play one at a time. The [Control Panel](http://localhost:7890/control)
   shows what's playing and queued, with **Skip**, **Clear queue**, and a **▶ Test**
@@ -131,13 +132,31 @@ and to avoid hearing sounds twice while OBS is also open.
 
 ---
 
-## Update interval
+## Update interval & unlock animations
 
-- Achievement progress refreshes every **2 minutes**
+- Achievement progress refreshes every **60 seconds** by default — configurable
+  (15s–10min) in *Overlay & Widgets → Animations & Refresh*
 - "Currently playing" check runs every **60 seconds**
-- The overlay polls the local server every **15 seconds**
+- The overlay polls the local server every **15 seconds** as a WebSocket fallback
 
-This keeps well within RetroAchievements API rate limits.
+When a refresh detects a **freshly unlocked achievement**, the overlay flashes
+that tile with a golden pulse (toggleable), and any **🏆 RA Achievement**
+triggers fire — so an unlock can also play a sound/image alert. Template
+variables: `{achievement}`, `{points}`, `{description}`.
+
+Overlay elements (achievement panel, widgets) animate in/out with a
+configurable style (fade, swipe, slide, pop).
+
+**About per-achievement progress counters** (e.g. "7/10 enemies"): the RA web
+API does not currently expose measured progress — it only exists inside the
+emulator overlay. The server already parses progress fields defensively, so
+counters and the "In progress" filter will light up automatically if RA adds
+them to the API. Until then, enable **Show live Rich Presence** to display the
+in-game status line from RA (which often includes exactly this kind of
+progress) in the panel header.
+
+The defaults keep well within RetroAchievements API rate limits; the 15s
+minimum refresh guards against hammering the API.
 
 ---
 

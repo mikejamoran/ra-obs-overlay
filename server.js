@@ -22,8 +22,7 @@ const CONFIG_FILE = path.join(__dirname, 'overlay_config.json');
 const UPLOADS_DIR = path.join(__dirname, 'public', 'uploads');
 const RA_BASE     = 'https://retroachievements.org/API';
 
-const ACH_TTL        = 120_000;
-const GAME_CHECK_TTL =  60_000;
+const GAME_CHECK_TTL = 60_000; // achievement refresh interval is display.refreshSec
 
 // ── State ──────────────────────────────────────────────────────────────────────
 
@@ -43,6 +42,10 @@ let S = {
     showPoints: true, showDesc: true,
     pinned: [], order: [],
     overrideNow: false,
+    refreshSec: 60,
+    showRichPresence: false,
+    unlockFlash: true,
+    elemAnimIn: 'fade', elemAnimOut: 'fade',
     recentEnabled: false, recentCount: 3, recentPos: 'bottom-left',
     recentMode: 'stack', recentSpeed: 80,
     recentX: null, recentY: null, recentW: null, recentH: null, recentZIndex: 9,
@@ -63,6 +66,7 @@ let S = {
   lastGameCheck:   0,
   nowPlayingId:    null,
   nowPlayingTitle: '',
+  richPresence:    '',
   connected:       false,
   fetching:        false,
 };
@@ -155,6 +159,7 @@ function getFullState() {
     display: S.display, widgets: S.widgets,
     connected: S.connected,
     nowPlayingId: S.nowPlayingId, nowPlayingTitle: S.nowPlayingTitle,
+    richPresence: S.richPresence,
     twitch: twitchStatus(),
     // Queue summaries + the alert currently on screen (so a client connecting
     // mid-alert can render it). Full trigger configs stay out of this payload —
@@ -463,22 +468,48 @@ async function fetchAchievements(gameId) {
   try {
     const data = await raGet('API_GetGameInfoAndUserProgress.php', { u: S.creds.username, g: gameId });
     const raw  = data.Achievements || {};
-    const list = Object.entries(raw).map(([id, a]) => ({
-      id:           parseInt(id),
-      title:        a.Title        || '',
-      description:  a.Description  || '',
-      points:       parseInt(a.Points       || 0),
-      badge:        a.BadgeName    || '',
-      earned:       !!(a.DateEarned || a.DateEarnedHardcore),
-      earnedHard:   !!a.DateEarnedHardcore,
-      dateEarned:   a.DateEarned || a.DateEarnedHardcore || '',
-      userProgress: parseInt(a.UserProgress || 0),
-      maxProgress:  parseInt(a.MaxProgress  || 0),
-      numAwarded:   parseInt(a.NumAwarded   || 0),
-      displayOrder: parseInt(a.DisplayOrder || 0),
-      type:         a.type || '',
-    }));
+    const list = Object.entries(raw).map(([id, a]) => {
+      // The RA web API doesn't currently expose per-achievement measured
+      // progress, but parse every shape it might use so counters light up
+      // automatically if/when it does ("7/10" string or numeric pair).
+      let userProgress = parseInt(a.UserProgress || 0);
+      let maxProgress  = parseInt(a.MaxProgress  || 0);
+      const mp = typeof a.MeasuredProgress === 'string' && a.MeasuredProgress.match(/^(\d+)\s*\/\s*(\d+)/);
+      if (mp) { userProgress = parseInt(mp[1]); maxProgress = parseInt(mp[2]); }
+      return {
+        id:           parseInt(id),
+        title:        a.Title        || '',
+        description:  a.Description  || '',
+        points:       parseInt(a.Points       || 0),
+        badge:        a.BadgeName    || '',
+        earned:       !!(a.DateEarned || a.DateEarnedHardcore),
+        earnedHard:   !!a.DateEarnedHardcore,
+        dateEarned:   a.DateEarned || a.DateEarnedHardcore || '',
+        userProgress, maxProgress,
+        numAwarded:   parseInt(a.NumAwarded   || 0),
+        displayOrder: parseInt(a.DisplayOrder || 0),
+        type:         a.type || '',
+      };
+    });
     list.sort((a, b) => (a.earned - b.earned) || (a.displayOrder - b.displayOrder));
+
+    // Detect fresh unlocks (only when refreshing the same game we already had)
+    if (S.gameInfo.id === gameId && S.achievements.length) {
+      const wasEarned = new Set(S.achievements.filter(a => a.earned).map(a => a.id));
+      for (const a of list) {
+        if (a.earned && !wasEarned.has(a.id)) {
+          console.log(`[RA] Achievement unlocked: ${a.title} (${a.points} pts)`);
+          broadcast({ type: 'achievement_unlocked', achievement: a });
+          triggers.handleEvent({
+            type: 'achievement',
+            user: S.twitchChannel || S.creds.username,
+            achievement: a.title, points: a.points, amount: a.points,
+            description: a.description, badge: a.badge,
+          });
+        }
+      }
+    }
+
     S.achievements = list;
     S.gameInfo = {
       id:      gameId,
@@ -506,6 +537,13 @@ async function checkNowPlaying() {
     S.nowPlayingId    = nowId;
     S.nowPlayingTitle = nowTitle;
     S.lastGameCheck   = Date.now();
+    // Rich Presence is the closest live-progress signal the RA API exposes
+    // (e.g. "Stage 3 · 7/10 enemies") — surface it for the overlay header
+    const rp = data.RichPresenceMsg || '';
+    if (rp !== S.richPresence) {
+      S.richPresence = rp;
+      broadcast({ type: 'rich_presence', message: rp });
+    }
     if (S.display.overrideNow && nowId && nowId !== S.gameId) {
       console.log(`[RA] Now playing changed → ${nowId} (${nowTitle})`);
       S.gameId = nowId;
@@ -597,12 +635,14 @@ app.post('/api/select-game', basicAuth, (req, res) => {
 
 app.get('/api/state', (req, res) => {
   const now = Date.now();
+  const achTtl = Math.max(15, parseInt(S.display.refreshSec) || 60) * 1000;
   if (S.connected && (now - S.lastGameCheck)  > GAME_CHECK_TTL) checkNowPlaying().catch(console.error);
-  if (S.connected && S.gameId && (now - S.lastAchRefresh) > ACH_TTL) fetchAchievements(S.gameId).catch(console.error);
+  if (S.connected && S.gameId && (now - S.lastAchRefresh) > achTtl) fetchAchievements(S.gameId).catch(console.error);
   res.json({
     gameInfo: S.gameInfo, achievements: S.achievements,
     display: S.display, widgets: S.widgets, connected: S.connected,
     nowPlayingId: S.nowPlayingId, nowPlayingTitle: S.nowPlayingTitle,
+    richPresence: S.richPresence,
     twitch: twitchStatus(),
   });
 });
