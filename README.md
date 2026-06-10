@@ -165,6 +165,29 @@ and to avoid hearing sounds twice while OBS is also open.
 
 ---
 
+## Layout Editor
+
+**http://localhost:7890/layout** (also linked from the setup sidebar) is a
+visual editor showing a scaled 1920×1080 canvas with *everything* on it at
+once — the achievement panel, recently-earned panel, rich presence chip, every
+widget, and every alert trigger (live, alerts play one at a time; here they're
+all visible so you can see exactly where each one will pop up).
+
+- **Filter chips** show/hide whole categories (RA panel / recent / rich
+  presence / widgets / alerts) so you can focus on one type of content
+- **Drag** anything anywhere — right up to the canvas edge; **corner-drag** to
+  resize (resizing an alert scales its image width and font size); arrow keys
+  nudge the selected element (Shift = 10px); everything saves immediately
+- **Layers panel** lists elements top-to-bottom with ▲/▼ and a z-index number —
+  alerts now have a real per-trigger z-index, so a green-screen video alert can
+  pop up *underneath* your cam frame widget, or above everything, as you choose
+- **Layout dropdown** switches between the base layout and any scene — edits
+  apply to the selected layout only (alert positions are shared across layouts)
+- **Backdrop dropdown** can show any image from your media library behind the
+  canvas (e.g. a screenshot of your OBS scene) for accurate placement
+
+---
+
 ## Overlay scenes (multiple browser sources)
 
 *Overlay & Widgets → Overlay Scenes* creates alternate layouts of the same

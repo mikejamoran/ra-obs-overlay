@@ -364,6 +364,7 @@ input[type=color] {
 
   <div class="sb-section">
     <label>Quick Links</label>
+    <a href="/layout" target="_blank" class="btn btn-sm" style="display:block;width:100%;text-align:center;margin-bottom:6px">🎨 Layout Editor ↗</a>
     <a href="#" class="btn btn-sm" style="display:block;width:100%;text-align:center;margin-bottom:6px" onclick="goTo('overlay','card-widgets');return false">⚙ Manage Widgets</a>
     <a href="/control" target="_blank" class="btn btn-sm" style="display:block;width:100%;text-align:center;margin-bottom:6px">🎮 Control Panel ↗</a>
     <a href="#" class="btn btn-sm" style="display:block;width:100%;text-align:center;margin-bottom:6px" onclick="goTo('twitch','card-twitch');return false">🟣 Twitch Connection</a>
@@ -774,8 +775,9 @@ input[type=color] {
       <div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.7">
         Scenes are alternate layouts of the same overlay, each with its own OBS browser-source URL —
         e.g. move the countdown somewhere else for your full-cam scene. A scene starts as a copy of the
-        base layout; <strong style="color:var(--text)">open its preview URL and drag elements around</strong>
-        to reposition them for that scene only. Show/hide per scene below.
+        base layout; lay it out visually in the <a href="/layout" target="_blank">🎨 Layout Editor ↗</a>
+        (pick the scene from its dropdown) or drag elements in the scene's preview URL.
+        Show/hide per scene below.
       </div>
       <div id="sceneList" style="display:flex;flex-direction:column;gap:4px;margin-bottom:12px">
         <div style="font-size:13px;color:var(--muted)">No scenes yet — the base layout is served at /obs.</div>
@@ -2438,6 +2440,9 @@ function buildTriggerSettings(t) {
         <select onchange="updateTrigger('${t.id}',{actions:{animation:{out:this.value}}})" style="width:100%;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text)">
           ${['fade','slide-up','slide-down','slide-left','slide-right','pop','none'].map(v => `<option value="${v}"${a.animation.out === v ? ' selected' : ''}>${v}</option>`).join('')}
         </select></div>
+      <div class="field"><label>Layer (z-index)</label>
+        <input type="number" min="0" value="${a.zIndex ?? 999}" title="Lower than a widget's z-index = the alert pops up underneath it"
+          oninput="updateTrigger('${t.id}',{actions:{zIndex:parseInt(this.value)||0}})"></div>
     </div>
     <button class="btn btn-sm" style="margin-top:4px" onclick="testTrigger('${t.id}')">▶ Test this alert</button>`;
 

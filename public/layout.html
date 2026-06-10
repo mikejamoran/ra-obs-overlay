@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stream Overlay — Layout Editor</title>
+<style>
+:root {
+  --bg: #0d1117; --surface: #161b22; --panel: #21262d; --border: #30363d;
+  --accent: #1f6feb; --text: #e6edf3; --muted: #8b949e;
+  --c-panel: #e3b341; --c-recent: #3fb950; --c-rp: #d29922; --c-widget: #58a6ff; --c-alert: #bc8cff;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+a { color: var(--accent); text-decoration: none; }
+select, input[type=number] {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+  padding: 5px 8px; color: var(--text); font-size: 13px;
+}
+
+.topbar {
+  display: flex; align-items: center; gap: 14px; padding: 10px 16px;
+  background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.topbar h1 { font-size: 15px; font-weight: 700; margin-right: 6px; }
+.topbar label { font-size: 12px; color: var(--muted); }
+.topbar .spacer { flex: 1; }
+
+.wrap { flex: 1; display: flex; min-height: 0; }
+.canvas-area { flex: 1; display: flex; align-items: center; justify-content: center; padding: 18px; min-width: 0; }
+#canvas {
+  position: relative; background: #000; border: 1px solid var(--border);
+  background-size: cover; background-position: center; overflow: hidden; flex-shrink: 0;
+}
+#canvas.grid {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+  background-size: 5% 8.888%;
+}
+.canvas-note { position: absolute; bottom: 6px; left: 8px; font-size: 10px; color: rgba(255,255,255,0.25); pointer-events: none; }
+
+/* Canvas elements */
+.el {
+  position: absolute; border: 1.5px solid; border-radius: 6px; cursor: grab;
+  display: flex; align-items: flex-start; overflow: hidden; user-select: none;
+}
+.el:active { cursor: grabbing; }
+.el .tag {
+  font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 0 0 6px 0;
+  color: #000; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+.el.selected { box-shadow: 0 0 0 2px #fff, 0 0 12px rgba(255,255,255,0.4); z-index: 10000 !important; }
+.el.faded { opacity: 0.35; border-style: dashed; }
+.el .rs {
+  position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 50%, currentColor 50%); opacity: 0.9;
+}
+
+/* Sidebar */
+.side {
+  width: 320px; flex-shrink: 0; background: var(--surface); border-left: 1px solid var(--border);
+  display: flex; flex-direction: column; min-height: 0;
+}
+.side-section { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.side-title { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+.filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  border: 1px solid var(--border); border-radius: 20px; padding: 4px 11px; font-size: 12px;
+  cursor: pointer; background: var(--panel); color: var(--muted); font-weight: 600;
+}
+.chip.on { color: #fff; border-color: currentColor; }
+#layers { flex: 1; overflow-y: auto; padding: 8px; }
+.layer-row {
+  display: flex; align-items: center; gap: 7px; padding: 6px 8px; border-radius: 6px;
+  font-size: 12.5px; cursor: pointer; border: 1px solid transparent;
+}
+.layer-row:hover { background: var(--panel); }
+.layer-row.selected { background: var(--panel); border-color: var(--accent); }
+.layer-row .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.layer-row .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.layer-row input { width: 52px; padding: 2px 5px; font-size: 11.5px; }
+.zbtn {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 4px; color: var(--muted);
+  width: 20px; height: 20px; font-size: 11px; cursor: pointer; line-height: 1;
+}
+.zbtn:hover { color: var(--text); border-color: var(--muted); }
+.hint { font-size: 11.5px; color: var(--muted); line-height: 1.6; }
+.saved-flash { color: #3fb950; font-size: 12px; opacity: 0; transition: opacity .2s; }
+.saved-flash.show { opacity: 1; }
+::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>🎨 Layout Editor</h1>
+  <label>Layout
+    <select id="sceneSel" onchange="setScene(this.value)"><option value="">Base layout (/obs)</option></select>
+  </label>
+  <label>Backdrop
+    <select id="bgSel" onchange="setBg(this.value)">
+      <option value="grid">Grid</option>
+      <option value="black">Black</option>
+    </select>
+  </label>
+  <span class="saved-flash" id="savedFlash">✓ saved</span>
+  <div class="spacer"></div>
+  <span style="font-size:12px;color:var(--muted)">Canvas: 1920×1080</span>
+  <a href="/" style="font-size:13px">↩ Back to setup</a>
+</div>
+
+<div class="wrap">
+  <div class="canvas-area" id="canvasArea">
+    <div id="canvas" class="grid"><div class="canvas-note">1920 × 1080 — drag to move · corner to resize · arrows nudge selected</div></div>
+  </div>
+  <aside class="side">
+    <div class="side-section">
+      <div class="side-title">Show on canvas</div>
+      <div class="filters" id="filters"></div>
+    </div>
+    <div class="side-title" style="padding:12px 14px 0">Layers — top to bottom</div>
+    <div id="layers"></div>
+    <div class="side-section hint">
+      Alerts are shown all at once here (live they play one at a time) and share positions
+      across all layouts. Use ↑ / ↓ or the number to set stacking priority — an alert with a
+      lower z-index than a widget pops up <em>underneath</em> it.
+      Faded items are hidden or disabled in this layout.
+    </div>
+  </aside>
+</div>
+
+<script>
+'use strict';
+
+const CW = 1920, CH = 1080, MARGIN = 16;
+const CATS = {
+  panel:  { label: 'RA Panel',        icon: '🏆', color: 'var(--c-panel)',  cvar: '--c-panel'  },
+  recent: { label: 'Recently Earned', icon: '🕑', color: 'var(--c-recent)', cvar: '--c-recent' },
+  rp:     { label: 'Rich Presence',   icon: '🎮', color: 'var(--c-rp)',     cvar: '--c-rp'     },
+  widget: { label: 'Widgets',         icon: '🧩', color: 'var(--c-widget)', cvar: '--c-widget' },
+  alert:  { label: 'Alerts',          icon: '🔔', color: 'var(--c-alert)',  cvar: '--c-alert'  },
+};
+
+let cfg = { display: {}, widgets: [] };
+let triggers = [], scenes = [], mediaImages = [];
+let sceneId = '';
+let filters = new Set(Object.keys(CATS));
+let els = [];
+let selectedKey = null;
+let scale = 1;
+
+async function api(path, method = 'GET', body) {
+  const opts = { method, headers: {} };
+  if (body) { opts.body = JSON.stringify(body); opts.headers['Content-Type'] = 'application/json'; }
+  const res = await fetch(path, opts);
+  return res.json();
+}
+
+function flashSaved() {
+  const f = document.getElementById('savedFlash');
+  f.classList.add('show');
+  clearTimeout(f._t);
+  f._t = setTimeout(() => f.classList.remove('show'), 1200);
+}
+
+// ── Scene overrides ───────────────────────────────────────────────────────────
+
+function ov(section, widgetId) {
+  if (!sceneId) return {};
+  const sc = scenes.find(s => s.id === sceneId);
+  if (!sc || !sc.overrides) return {};
+  if (section === 'widgets') return (sc.overrides.widgets || {})[widgetId] || {};
+  return sc.overrides[section] || {};
+}
+
+function sceneBody() { return sceneId ? { scene: sceneId } : {}; }
+
+// ── Geometry helpers ──────────────────────────────────────────────────────────
+
+function presetToPx(preset, w, h) {
+  const [a, b] = (preset || 'top-right').split('-');
+  const v = b === undefined ? a : a;        // 'center' alone
+  const hz = b === undefined ? a : b;
+  const y = v  === 'top' ? MARGIN : v  === 'bottom' ? CH - h - MARGIN : (CH - h) / 2;
+  const x = hz === 'left' ? MARGIN : hz === 'right' ? CW - w - MARGIN : (CW - w) / 2;
+  return { x: Math.round(x), y: Math.round(y) };
+}
+
+function alertSize(t) {
+  const a = t.actions;
+  let w = 140, h = 36;
+  if (a.image.enabled && a.image.src) {
+    w = Math.max(w, a.image.widthPx || 300);
+    h += Math.round((a.image.widthPx || 300) * 0.56);
+  }
+  if (a.text.enabled) {
+    w = Math.max(w, 320);
+    h += Math.round((a.text.fontSize || 32) * 1.6 + 16);
+  }
+  return { w, h };
+}
+
+// ── Build the element list ────────────────────────────────────────────────────
+
+function buildElements() {
+  const d = cfg.display || {};
+  const out = [];
+
+  { // RA achievement panel
+    const o = ov('panel');
+    const w = o.w ?? d.panelWidth ?? 440, h = o.h ?? d.panelH ?? 600;
+    const hasPx = (o.x ?? d.panelX) !== null && (o.x ?? d.panelX) !== undefined;
+    const p = hasPx ? { x: o.x ?? d.panelX, y: o.y ?? d.panelY } : presetToPx(d.panelPos, w, h);
+    out.push({ key: 'panel', cat: 'panel', id: null, label: 'Achievement Panel',
+      x: p.x, y: p.y, w, h, z: d.panelZIndex || 10,
+      faded: (o.visible ?? (d.panelVisible !== false)) === false, resizable: true });
+  }
+
+  if (cfg.display) { // Recently earned
+    const o = ov('recent');
+    const w = o.w ?? d.recentW ?? 340, h = o.h ?? d.recentH ?? 120;
+    const hasPx = (o.x ?? d.recentX) !== null && (o.x ?? d.recentX) !== undefined;
+    const p = hasPx ? { x: o.x ?? d.recentX, y: o.y ?? d.recentY } : presetToPx(d.recentPos || 'bottom-left', w, h);
+    out.push({ key: 'recent', cat: 'recent', id: null, label: 'Recently Earned',
+      x: p.x, y: p.y, w, h, z: d.recentZIndex || 9,
+      faded: !d.recentEnabled || (o.visible === false), resizable: true });
+  }
+
+  { // Rich presence chip
+    const o = ov('rp');
+    out.push({ key: 'rp', cat: 'rp', id: null, label: 'Rich Presence',
+      x: o.x ?? d.rpX ?? 16, y: o.y ?? d.rpY ?? 16, w: 280, h: 34, z: d.rpZIndex || 8,
+      faded: !(d.showRichPresence && d.rpFloating) || (o.visible === false), resizable: false,
+      note: !(d.showRichPresence && d.rpFloating) ? 'enable floating RP in setup' : '' });
+  }
+
+  for (const w of cfg.widgets || []) {
+    const o = ov('widgets', w.id);
+    out.push({ key: 'w-' + w.id, cat: 'widget', id: w.id, label: w.label || w.type,
+      x: o.x ?? w.x, y: o.y ?? w.y, w: o.w ?? w.w, h: o.h ?? w.h, z: w.zIndex || 1,
+      faded: (o.visible ?? w.visible) === false, resizable: true });
+  }
+
+  for (const t of triggers) {
+    const sz = alertSize(t);
+    const pos = t.actions.position || {};
+    let x, y;
+    if (pos.mode === 'custom') {
+      x = (pos.x ?? 50) / 100 * CW - sz.w / 2;
+      y = (pos.y ?? 20) / 100 * CH - sz.h / 2;
+    } else {
+      ({ x, y } = presetToPx(pos.preset || 'center', sz.w, sz.h));
+    }
+    out.push({ key: 't-' + t.id, cat: 'alert', id: t.id, label: t.name,
+      x: Math.round(x), y: Math.round(y), w: sz.w, h: sz.h, z: t.actions.zIndex ?? 999,
+      faded: !t.enabled, note: t.enabled ? '' : 'disabled', resizable: true, trigger: t });
+  }
+  return out;
+}
+
+// ── Persistence per category ──────────────────────────────────────────────────
+
+async function savePosition(el) {
+  if (el.cat === 'panel')
+    await api('/api/display/position', 'POST', { x: el.x, y: el.y, w: el.w, h: el.h, ...sceneBody() });
+  else if (el.cat === 'recent')
+    await api('/api/display/recent-position', 'POST', { x: el.x, y: el.y, w: el.w, h: el.h, ...sceneBody() });
+  else if (el.cat === 'rp')
+    await api('/api/display/rp-position', 'POST', { x: el.x, y: el.y, ...sceneBody() });
+  else if (el.cat === 'widget')
+    await api('/api/widgets/' + el.id + '/position', 'POST', { x: el.x, y: el.y, w: el.w, h: el.h, ...sceneBody() });
+  else if (el.cat === 'alert') {
+    const cx = (el.x + el.w / 2) / CW * 100, cy = (el.y + el.h / 2) / CH * 100;
+    await api('/api/triggers/' + el.id + '/position', 'POST',
+      { x: Math.round(cx * 10) / 10, y: Math.round(cy * 10) / 10 });
+    const local = triggers.find(t => t.id === el.id);
+    if (local) local.actions.position = { ...local.actions.position, mode: 'custom',
+      x: Math.round(cx * 10) / 10, y: Math.round(cy * 10) / 10 };
+  }
+  flashSaved();
+}
+
+async function saveAlertResize(el, factor) {
+  const t = el.trigger;
+  const patch = { actions: {} };
+  if (t.actions.image.enabled) patch.actions.image = { widthPx: Math.max(20, Math.round((t.actions.image.widthPx || 300) * factor)) };
+  if (t.actions.text.enabled)  patch.actions.text  = { fontSize: Math.max(10, Math.round((t.actions.text.fontSize || 32) * factor)) };
+  const res = await api('/api/triggers/' + el.id, 'PUT', patch);
+  if (res.trigger) {
+    const idx = triggers.findIndex(x => x.id === el.id);
+    triggers[idx] = res.trigger;
+  }
+  flashSaved();
+}
+
+async function saveZ(el, z) {
+  el.z = z;
+  if (el.cat === 'panel')       { cfg.display.panelZIndex  = z; await api('/api/display', 'POST', { panelZIndex: z }); }
+  else if (el.cat === 'recent') { cfg.display.recentZIndex = z; await api('/api/display', 'POST', { recentZIndex: z }); }
+  else if (el.cat === 'rp')     { cfg.display.rpZIndex     = z; await api('/api/display', 'POST', { rpZIndex: z }); }
+  else if (el.cat === 'widget') {
+    const w = cfg.widgets.find(w => w.id === el.id); if (w) w.zIndex = z;
+    await api('/api/widgets/' + el.id, 'PUT', { zIndex: z });
+  } else if (el.cat === 'alert') {
+    const t = triggers.find(t => t.id === el.id); if (t) t.actions.zIndex = z;
+    await api('/api/triggers/' + el.id, 'PUT', { actions: { zIndex: z } });
+  }
+  flashSaved();
+  render();
+}
+
+// ── Rendering ─────────────────────────────────────────────────────────────────
+
+function render() {
+  els = buildElements();
+  const area = document.getElementById('canvasArea');
+  const canvas = document.getElementById('canvas');
+  scale = Math.min((area.clientWidth - 36) / CW, (area.clientHeight - 36) / CH);
+  canvas.style.width  = Math.round(CW * scale) + 'px';
+  canvas.style.height = Math.round(CH * scale) + 'px';
+
+  canvas.querySelectorAll('.el').forEach(e => e.remove());
+  for (const el of els) {
+    if (!filters.has(el.cat)) continue;
+    canvas.appendChild(drawEl(el));
+  }
+  renderFilters();
+  renderLayers();
+}
+
+function drawEl(el) {
+  const color = CATS[el.cat].color;
+  const div = document.createElement('div');
+  div.className = 'el' + (el.faded ? ' faded' : '') + (selectedKey === el.key ? ' selected' : '');
+  div.dataset.key = el.key;
+  div.style.cssText = `left:${el.x * scale}px;top:${el.y * scale}px;width:${el.w * scale}px;height:${el.h * scale}px;`
+    + `border-color:${color};color:${color};background:color-mix(in srgb, ${color} 12%, transparent);z-index:${el.z};`;
+  const tag = document.createElement('div');
+  tag.className = 'tag';
+  tag.style.background = color;
+  tag.textContent = `${CATS[el.cat].icon} ${el.label}` + (el.note ? ` (${el.note})` : '');
+  div.appendChild(tag);
+
+  if (el.resizable) {
+    const rs = document.createElement('div');
+    rs.className = 'rs';
+    rs.addEventListener('mousedown', e => startResize(e, el, div));
+    div.appendChild(rs);
+  }
+
+  div.addEventListener('mousedown', e => {
+    if (e.target.classList.contains('rs')) return;
+    select(el.key);
+    startDrag(e, el, div);
+  });
+  return div;
+}
+
+function select(key) {
+  selectedKey = key;
+  document.querySelectorAll('.el').forEach(d => d.classList.toggle('selected', d.dataset.key === key));
+  document.querySelectorAll('.layer-row').forEach(r => r.classList.toggle('selected', r.dataset.key === key));
+}
+
+function startDrag(e, el, div) {
+  e.preventDefault();
+  const sx = e.clientX, sy = e.clientY, ox = el.x, oy = el.y;
+  function mv(ev) {
+    el.x = Math.round(ox + (ev.clientX - sx) / scale);
+    el.y = Math.round(oy + (ev.clientY - sy) / scale);
+    div.style.left = el.x * scale + 'px';
+    div.style.top  = el.y * scale + 'px';
+  }
+  function up() {
+    document.removeEventListener('mousemove', mv);
+    savePosition(el);
+  }
+  document.addEventListener('mousemove', mv);
+  document.addEventListener('mouseup', up, { once: true });
+}
+
+function startResize(e, el, div) {
+  e.preventDefault(); e.stopPropagation();
+  select(el.key);
+  const sx = e.clientX, sy = e.clientY, ow = el.w, oh = el.h;
+  function mv(ev) {
+    el.w = Math.max(30, Math.round(ow + (ev.clientX - sx) / scale));
+    el.h = el.cat === 'alert'
+      ? Math.round(oh * el.w / ow)            // alerts keep aspect; size maps to media/font scale
+      : Math.max(24, Math.round(oh + (ev.clientY - sy) / scale));
+    div.style.width  = el.w * scale + 'px';
+    div.style.height = el.h * scale + 'px';
+  }
+  function up() {
+    document.removeEventListener('mousemove', mv);
+    if (el.cat === 'alert') {
+      const factor = el.w / ow;
+      saveAlertResize(el, factor).then(() => { savePosition(el); render(); });
+    } else {
+      savePosition(el);
+    }
+  }
+  document.addEventListener('mousemove', mv);
+  document.addEventListener('mouseup', up, { once: true });
+}
+
+function renderFilters() {
+  const box = document.getElementById('filters');
+  box.innerHTML = '';
+  for (const [cat, c] of Object.entries(CATS)) {
+    const n = els.filter(e => e.cat === cat).length;
+    const chip = document.createElement('div');
+    chip.className = 'chip' + (filters.has(cat) ? ' on' : '');
+    chip.style.color = filters.has(cat) ? `var(${c.cvar})` : '';
+    chip.textContent = `${c.icon} ${c.label} (${n})`;
+    chip.onclick = () => { filters.has(cat) ? filters.delete(cat) : filters.add(cat); render(); };
+    box.appendChild(chip);
+  }
+}
+
+function renderLayers() {
+  const box = document.getElementById('layers');
+  box.innerHTML = '';
+  const sorted = [...els].filter(e => filters.has(e.cat)).sort((a, b) => b.z - a.z);
+  for (let i = 0; i < sorted.length; i++) {
+    const el = sorted[i];
+    const row = document.createElement('div');
+    row.className = 'layer-row' + (selectedKey === el.key ? ' selected' : '');
+    row.dataset.key = el.key;
+    row.innerHTML = `
+      <span class="dot" style="background:${CATS[el.cat].color}"></span>
+      <span class="nm" title="${el.label}">${CATS[el.cat].icon} ${el.label}${el.faded ? ' <span style="color:var(--muted)">·hidden</span>' : ''}</span>
+      <button class="zbtn" title="Raise above the layer above">▲</button>
+      <button class="zbtn" title="Lower below the layer below">▼</button>
+      <input type="number" value="${el.z}" title="z-index">`;
+    row.onclick = e => { if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT') select(el.key); };
+    const [upB, dnB] = row.querySelectorAll('button');
+    upB.onclick = () => { const above = sorted[i - 1]; saveZ(el, above ? above.z + 1 : el.z + 1); };
+    dnB.onclick = () => { const below = sorted[i + 1]; saveZ(el, below ? Math.max(0, below.z - 1) : Math.max(0, el.z - 1)); };
+    row.querySelector('input').onchange = e => saveZ(el, parseInt(e.target.value) || 0);
+    box.appendChild(row);
+  }
+}
+
+// Keyboard nudge for the selected element
+let nudgeTimer = null;
+document.addEventListener('keydown', e => {
+  if (!selectedKey || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  const el = els.find(x => x.key === selectedKey);
+  if (!el) return;
+  const step = e.shiftKey ? 10 : 1;
+  let moved = true;
+  if (e.key === 'ArrowLeft')  el.x -= step;
+  else if (e.key === 'ArrowRight') el.x += step;
+  else if (e.key === 'ArrowUp')    el.y -= step;
+  else if (e.key === 'ArrowDown')  el.y += step;
+  else moved = false;
+  if (!moved) return;
+  e.preventDefault();
+  const div = document.querySelector(`.el[data-key="${selectedKey}"]`);
+  if (div) { div.style.left = el.x * scale + 'px'; div.style.top = el.y * scale + 'px'; }
+  clearTimeout(nudgeTimer);
+  nudgeTimer = setTimeout(() => savePosition(el), 400);
+});
+
+// ── Scene / backdrop controls ─────────────────────────────────────────────────
+
+function setScene(id) { sceneId = id; render(); }
+
+function setBg(val) {
+  const canvas = document.getElementById('canvas');
+  try { localStorage.setItem('layoutBg', val); } catch {}
+  if (val === 'grid' || val === 'black') {
+    canvas.style.backgroundImage = '';
+    canvas.classList.toggle('grid', val === 'grid');
+  } else {
+    canvas.classList.remove('grid');
+    canvas.style.backgroundImage = `url("${val}")`;
+  }
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+
+async function load() {
+  const [c, t, s, m] = await Promise.all([
+    api('/api/config'), api('/api/triggers'), api('/api/scenes'), api('/api/media'),
+  ]);
+  cfg = c; triggers = t.triggers || []; scenes = s.scenes || [];
+  mediaImages = (m.media || []).filter(x => x.kind === 'image');
+
+  const sel = document.getElementById('sceneSel');
+  for (const sc of scenes) {
+    const o = document.createElement('option');
+    o.value = sc.id; o.textContent = sc.name;
+    sel.appendChild(o);
+  }
+  const bg = document.getElementById('bgSel');
+  for (const img of mediaImages) {
+    const o = document.createElement('option');
+    o.value = img.src; o.textContent = '🖼 ' + img.name;
+    bg.appendChild(o);
+  }
+  let savedBg = 'grid';
+  try { savedBg = localStorage.getItem('layoutBg') || 'grid'; } catch {}
+  if ([...bg.options].some(o => o.value === savedBg)) { bg.value = savedBg; setBg(savedBg); }
+
+  render();
+}
+
+window.addEventListener('resize', render);
+load();
+</script>
+</body>
+</html>

@@ -302,8 +302,11 @@ html, body {
 #ticker { position: fixed; bottom: 6px; right: 8px; font-size: 10px; color: rgba(255,255,255,0.15); pointer-events: none; }
 
 /* ── Alerts ──────────────────────────────────────────────────────────────────── */
-#alert-layer { position: fixed; inset: 0; pointer-events: none; z-index: 999; }
-.alert-box { position: absolute; max-width: 80vw; }
+/* The layer is a plain container (no stacking context) so each alert's own
+   z-index can interleave with widgets and panels — an alert can pop up UNDER
+   a cam frame widget or over everything, per trigger. */
+#alert-layer { position: static; }
+.alert-box { position: fixed; max-width: 80vw; pointer-events: none; }
 .alert-box.pos-top-left     { top: 32px; left: 32px; }
 .alert-box.pos-top-center   { top: 32px; left: 50%; transform: translateX(-50%); }
 .alert-box.pos-top-right    { top: 32px; right: 32px; }
@@ -357,7 +360,7 @@ html, body {
   background: rgba(var(--bg-rgb,13,13,13), var(--bg-opacity,0.88));
   border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;
   padding: 6px 12px; font-size: 13px; color: var(--gold-color, #e3b341);
-  max-width: 60vw; line-height: 1.4; z-index: 8;
+  max-width: 60vw; line-height: 1.4;
 }
 #rp-float:active { cursor: grabbing; }
 
@@ -738,6 +741,7 @@ function renderRichPresence() {
   const x = ov.x ?? d.rpX, y = ov.y ?? d.rpY;
   el.style.left = (x ?? 16) + 'px';
   el.style.top  = (y ?? 16) + 'px';
+  el.style.zIndex = d.rpZIndex || 8;
 }
 
 function buildTile(a, d, pinned) {
@@ -1386,6 +1390,7 @@ let currentAlert = null; // { id, box, inner, audio, outAnim }
 function buildAlertBox(alert, opts = {}) {
   const box = document.createElement('div');
   box.className = 'alert-box';
+  box.style.zIndex = alert.zIndex ?? 999;
   const pos = alert.position || {};
   if (pos.mode === 'custom') {
     box.style.left = (pos.x ?? 50) + '%';

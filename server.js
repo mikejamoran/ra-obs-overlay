@@ -597,6 +597,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.get('/',        basicAuth, (_, res) => res.sendFile(path.join(__dirname, 'public', 'setup.html')));
 app.get('/obs',               (_, res) => res.sendFile(path.join(__dirname, 'public', 'overlay.html')));
 app.get('/control', basicAuth, (_, res) => res.sendFile(path.join(__dirname, 'public', 'control.html')));
+app.get('/layout',  basicAuth, (_, res) => res.sendFile(path.join(__dirname, 'public', 'layout.html')));
 
 // ── Routes: RA ──────────────────────────────────────────────────────────────────
 
