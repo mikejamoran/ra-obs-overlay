@@ -107,7 +107,7 @@ select, input[type=number] {
   <span class="saved-flash" id="savedFlash">✓ saved</span>
   <div class="spacer"></div>
   <span style="font-size:12px;color:var(--muted)">Canvas: 1920×1080</span>
-  <a href="/" style="font-size:13px">↩ Back to setup</a>
+  <a href="#" id="backLink" style="font-size:13px">↩ Back to setup</a>
 </div>
 
 <div class="wrap">
@@ -133,6 +133,9 @@ select, input[type=number] {
 <script>
 'use strict';
 
+// Multi-user: pages under /u/<name>/ talk to that user's API
+const BASE = (location.pathname.match(/^\/u\/[^/]+/) || [''])[0];
+
 const CW = 1920, CH = 1080, MARGIN = 16;
 const CATS = {
   panel:  { label: 'RA Panel',        icon: '🏆', color: 'var(--c-panel)',  cvar: '--c-panel'  },
@@ -153,7 +156,7 @@ let scale = 1;
 async function api(path, method = 'GET', body) {
   const opts = { method, headers: {} };
   if (body) { opts.body = JSON.stringify(body); opts.headers['Content-Type'] = 'application/json'; }
-  const res = await fetch(path, opts);
+  const res = await fetch(BASE + path, opts);
   return res.json();
 }
 
@@ -508,6 +511,7 @@ async function load() {
   render();
 }
 
+document.getElementById('backLink').href = BASE + '/';
 window.addEventListener('resize', render);
 load();
 </script>

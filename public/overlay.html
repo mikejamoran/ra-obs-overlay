@@ -420,6 +420,9 @@ function applyStyles(d) {
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
+// Multi-user: overlays served under /u/<name>/obs talk to that user's API + WS
+const BASE = (location.pathname.match(/^\/u\/[^/]+/) || [''])[0];
+
 let state = { display: {}, achievements: [], gameInfo: {}, widgets: [], scenes: [], connected: false, richPresence: '' };
 
 // ── Scenes ────────────────────────────────────────────────────────────────────
@@ -474,7 +477,7 @@ let ws, wsReconnect;
 function connectWS() {
   clearTimeout(wsReconnect);
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(`${proto}//${location.host}`);
+  ws = new WebSocket(`${proto}//${location.host}${BASE || '/'}`);
   ws.onmessage = e => { try { handleWS(JSON.parse(e.data)); } catch {} };
   ws.onclose   = () => { wsReconnect = setTimeout(connectWS, 3000); };
   ws.onerror   = () => ws.close();
@@ -662,7 +665,7 @@ function renderAchPanel() {
         ghostClass: 'sortable-ghost', chosenClass: 'sortable-chosen',
         onEnd: () => {
           const ids = [...cont.querySelectorAll('.tile')].map(t => parseInt(t.dataset.id));
-          fetch('/api/display', {
+          fetch(BASE + '/api/display', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ order: ids }),
           }).catch(() => {});
@@ -707,7 +710,7 @@ function renderAchPanel() {
         const w = Math.round(aw.offsetWidth);
         const h = Math.round(parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--panel-h')) || 600);
         state.display.panelWidth = w; state.display.panelH = h;
-        fetch('/api/display/position', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({w,h,...sceneBody()}) }).catch(()=>{});
+        fetch(BASE + '/api/display/position', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({w,h,...sceneBody()}) }).catch(()=>{});
       }
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp, { once: true });
@@ -943,7 +946,7 @@ function renderRecentPanel(d, achs) {
         document.body.style.userSelect = ''; document.body.style.cursor = '';
         const w = Math.round(rp.offsetWidth), h = Math.round(rp.offsetHeight);
         state.display.recentW = w; state.display.recentH = h;
-        fetch('/api/display/recent-position', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({w,h,...sceneBody()}) }).catch(()=>{});
+        fetch(BASE + '/api/display/recent-position', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({w,h,...sceneBody()}) }).catch(()=>{});
       }
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp, { once: true });
@@ -1294,7 +1297,7 @@ function makeDraggable(el, endpoint, onUpdate) {
       const x = Math.round(parseFloat(el.style.left) || 0);
       const y = Math.round(parseFloat(el.style.top)  || 0);
       if (onUpdate) onUpdate(x, y);
-      fetch(endpoint, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({x,y,...sceneBody()}) }).catch(()=>{});
+      fetch(BASE + endpoint, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({x,y,...sceneBody()}) }).catch(()=>{});
     }
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp, { once: true });
@@ -1327,7 +1330,7 @@ function makeResizable(el, endpoint, minW = 80, minH = 40) {
       document.body.style.userSelect = '';
       document.body.style.cursor = '';
       const w = Math.round(el.offsetWidth), h = Math.round(el.offsetHeight);
-      fetch(endpoint, {
+      fetch(BASE + endpoint, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ w, h, ...sceneBody() }),
       }).catch(() => {});
@@ -1367,7 +1370,7 @@ function p2(n) { return String(n).padStart(2,'0'); }
 
 setInterval(() => {
   if (ws && ws.readyState === 1) return;
-  fetch('/api/state').then(r => r.json()).then(d => {
+  fetch(BASE + '/api/state').then(r => r.json()).then(d => {
     if (d.achievements) state.achievements = d.achievements;
     if (d.gameInfo)     state.gameInfo     = d.gameInfo;
     if (d.display)      Object.assign(state.display, d.display);
@@ -1460,7 +1463,7 @@ function playAlert(alert, resume) {
     let pending = finiteMedia.length;
     const done = () => {
       if (--pending > 0) return;
-      fetch('/api/alerts/finished', {
+      fetch(BASE + '/api/alerts/finished', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ alertId: alert.id }),
       }).catch(() => {});
@@ -1491,7 +1494,7 @@ function showAlertPreview(alert, triggerId) {
   hint.innerHTML = `<span>📍 Drag to position</span><button data-nodrag="1">✓ Done</button>`;
   hint.querySelector('button').onclick = e => {
     e.stopPropagation();
-    fetch('/api/alerts/preview-end', { method: 'POST' }).catch(() => {});
+    fetch(BASE + '/api/alerts/preview-end', { method: 'POST' }).catch(() => {});
     removeAlertPreview();
   };
   box.querySelector('.alert-inner').appendChild(hint);
@@ -1519,7 +1522,7 @@ function showAlertPreview(alert, triggerId) {
       const r = box.getBoundingClientRect();
       const x = ((r.left + r.width  / 2) / window.innerWidth)  * 100;
       const y = ((r.top  + r.height / 2) / window.innerHeight) * 100;
-      fetch('/api/triggers/' + triggerId + '/position', {
+      fetch(BASE + '/api/triggers/' + triggerId + '/position', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 }),
       }).catch(() => {});

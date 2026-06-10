@@ -129,13 +129,16 @@ body { font-family: "Segoe UI", system-ui, sans-serif; background: var(--bg); co
 </div>
 
 <script>
+// Multi-user: pages under /u/<name>/ talk to that user's API + WS
+const BASE = (location.pathname.match(/^\/u\/[^/]+/) || [''])[0];
+
 let ws, wsReconnect;
 let widgets = [];
 
 function connectWS() {
   clearTimeout(wsReconnect);
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(`${proto}//${location.host}`);
+  ws = new WebSocket(`${proto}//${location.host}${BASE || '/'}`);
 
   ws.onopen = () => {
     document.getElementById('ws-dot').className = 'ws-dot ok';
@@ -262,7 +265,7 @@ function patchCard(w) {
 }
 
 function action(id, act, value) {
-  fetch('/api/widgets/' + id + '/action', {
+  fetch(BASE + '/api/widgets/' + id + '/action', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: act, value }),
@@ -303,11 +306,11 @@ function renderAlertQueue({ playing, queue }) {
 }
 
 function alertAction(act) {
-  fetch('/api/alerts/' + act, { method: 'POST' }).catch(() => {});
+  fetch(BASE + '/api/alerts/' + act, { method: 'POST' }).catch(() => {});
 }
 
 function loadTriggerTests() {
-  fetch('/api/triggers').then(r => r.json()).then(d => {
+  fetch(BASE + '/api/triggers').then(r => r.json()).then(d => {
     const triggers = d.triggers || [];
     if (!triggers.length) return;
     const box = document.getElementById('trigger-tests');
@@ -322,7 +325,7 @@ function loadTriggerTests() {
 }
 
 function testTrigger(id) {
-  fetch('/api/triggers/' + id + '/test', { method: 'POST' }).catch(() => {});
+  fetch(BASE + '/api/triggers/' + id + '/test', { method: 'POST' }).catch(() => {});
 }
 
 // ── Timer RAF loop ────────────────────────────────────────────────────────────

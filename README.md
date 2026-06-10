@@ -165,6 +165,28 @@ and to avoid hearing sounds twice while OBS is also open.
 
 ---
 
+## Multiple users
+
+The server hosts any number of fully separate overlays. The **👥 Users** card on
+the admin setup page creates accounts (username + password); each user gets:
+
+- their own setup page, control panel, layout editor and OBS URL at
+  `https://yourdomain/u/<username>/` (e.g. `/u/bob/obs` as their browser source)
+- their own RetroAchievements credentials, Twitch connection (they click
+  "Connect with Twitch" on their page and authorize their own channel — your
+  one Twitch app serves everyone), Ko-fi webhook + token, widgets, triggers,
+  scenes, uploads, alert queue and undo history
+
+Configs live in `users/<id>/config.json`; per-user uploads in
+`public/uploads/u_<name>/`. The **original single-user URLs (`/`, `/obs`,
+`/control`…) keep working — they map to the admin account**, and the first boot
+after upgrading migrates your existing `overlay_config.json` into it
+automatically (the original file is kept as a backup). Authentication is HTTP
+Basic per user; the admin (or the `SETUP_USER`/`SETUP_PASS` env credentials)
+can access every account.
+
+---
+
 ## Layout Editor
 
 **http://localhost:7890/layout** (also linked from the setup sidebar) is a

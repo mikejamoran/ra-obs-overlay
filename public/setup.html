@@ -991,6 +991,35 @@ TWITCH_CLIENT_SECRET=paste_secret_here</pre>
     </div>
   </div>
 
+  <!-- ── Users (admin only) ─────────────────────────────────────────────────── -->
+  <div class="card hidden" id="card-users">
+    <div class="card-header">
+      <h2>👥 Users</h2>
+      <span class="tag" id="usersTag">—</span>
+    </div>
+    <div class="card-body">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.7">
+        Each user gets a fully separate overlay — their own RetroAchievements account, Twitch
+        connection, Ko-fi token, widgets, triggers, scenes and uploads — at
+        <code style="background:var(--bg);padding:2px 6px;border-radius:4px">/u/&lt;username&gt;/</code>.
+        Send them that link with the username and password you set here. Your own overlay stays on
+        the original URLs.
+      </div>
+      <div id="userList" style="display:flex;flex-direction:column;gap:4px;margin-bottom:14px"></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em">Add user</div>
+      <div class="field-row">
+        <div class="field"><label>Username (a-z, 0-9, - _)</label>
+          <input type="text" id="newUserName" placeholder="gamerpal"></div>
+        <div class="field"><label>Display name</label>
+          <input type="text" id="newUserDisplay" placeholder="Gamer Pal"></div>
+        <div class="field"><label>Password</label>
+          <input type="text" id="newUserPass" placeholder="min 4 chars"></div>
+      </div>
+      <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="addUser()">+ Create user</button>
+      <div id="userError" class="banner error hidden" style="margin-top:8px"></div>
+    </div>
+  </div>
+
   </div><!-- /tab-twitch -->
 
 </main>
@@ -1016,6 +1045,9 @@ TWITCH_CLIENT_SECRET=paste_secret_here</pre>
 
 <script>
 'use strict';
+
+// Multi-user: pages under /u/<name>/ talk to that user's API + WS
+const BASE = (location.pathname.match(/^\/u\/[^/]+/) || [''])[0];
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -1090,7 +1122,15 @@ switchTab((() => { try { return localStorage.getItem('setupTab') || 'ra'; } catc
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
+function rewriteAppLinks() {
+  document.querySelectorAll('a[href]').forEach(a => {
+    const h = a.getAttribute('href');
+    if (/^\/(control|layout|auth\/twitch|api\/backup)/.test(h)) a.setAttribute('href', BASE + h);
+  });
+}
+
 async function init() {
+  rewriteAppLinks();
   document.getElementById('obsUrl').textContent = obsOverlayUrl();
   try {
     const cfg = await api('/api/config');
@@ -1388,7 +1428,7 @@ async function forceRefresh() {
 }
 
 function obsOverlayUrl() {
-  return window.location.origin + '/obs';
+  return window.location.origin + BASE + '/obs';
 }
 
 function copyOBSUrl() {
@@ -1414,7 +1454,7 @@ function escHtml(s) {
 async function api(path, method='GET', body) {
   const opts = { method, headers: {} };
   if (body) { opts.body = JSON.stringify(body); opts.headers['Content-Type'] = 'application/json'; }
-  const res = await fetch(path, opts);
+  const res = await fetch(BASE + path, opts);
   return res.json();
 }
 
@@ -1840,7 +1880,7 @@ async function uploadFile(input) {
   const fd = new FormData();
   fd.append('file', file);
   try {
-    const res = await fetch('/api/upload', { method: 'POST', body: fd });
+    const res = await fetch(BASE + '/api/upload', { method: 'POST', body: fd });
     const data = await res.json();
     if (data.ok) { input.value = ''; loadUploads(); }
     else alert('Upload failed: ' + data.error);
@@ -2193,7 +2233,7 @@ async function endAlertPositioning(id) {
   clearInterval(positioningPoll);
   positioningPoll = null;
   document.getElementById('tposbanner-' + id)?.classList.add('hidden');
-  await fetch('/api/alerts/preview-end', { method: 'POST' }).catch(() => {});
+  await fetch(BASE + '/api/alerts/preview-end', { method: 'POST' }).catch(() => {});
 }
 
 function renderTriggerList() {
@@ -2539,6 +2579,61 @@ function setKofiStatus(configured, lastEvent) {
   }
 }
 
+// ── Users (admin only) ────────────────────────────────────────────────────────
+
+async function loadUsers() {
+  const res = await api('/api/users');
+  if (!res.users) return;
+  document.getElementById('usersTag').textContent =
+    res.users.length + ' user' + (res.users.length !== 1 ? 's' : '');
+  const list = document.getElementById('userList');
+  list.innerHTML = '';
+  for (const u of res.users) {
+    const row = document.createElement('div');
+    row.className = 'layer-row';
+    const home = u.isAdmin ? '/' : u.base + '/';
+    row.innerHTML = `
+      <span class="layer-icon">${u.isAdmin ? '👑' : '👤'}</span>
+      <span class="layer-label">${escHtml(u.displayName)} <span style="color:var(--muted);font-size:11px">(${escHtml(u.username)})</span></span>
+      <span class="trigger-type-badge">${u.twitchChannel ? '🟣 ' + escHtml(u.twitchChannel) : 'no twitch'}</span>
+      <span class="trigger-type-badge">${u.raUser ? '🏆 ' + escHtml(u.raUser) : 'no RA'}</span>
+      <div class="layer-actions">
+        <button class="layer-btn" title="Copy their setup link" onclick="navigator.clipboard.writeText(location.origin + '${home}');this.textContent='✓';setTimeout(()=>this.textContent='⎘',1200)">⎘</button>
+        <button class="layer-btn" title="Open their setup page" onclick="window.open('${home}','_blank')">↗</button>
+        <button class="layer-btn" title="Set a new password" onclick="setUserPassword('${u.id}','${escHtml(u.username)}')">🔑</button>
+        ${u.isAdmin ? '' : `<button class="layer-btn danger" title="Remove user (their files stay on disk)" onclick="deleteUser('${u.id}','${escHtml(u.username)}')">🗑</button>`}
+      </div>`;
+    list.appendChild(row);
+  }
+}
+
+async function addUser() {
+  document.getElementById('userError').classList.add('hidden');
+  const res = await api('/api/users', 'POST', {
+    username:    document.getElementById('newUserName').value,
+    displayName: document.getElementById('newUserDisplay').value,
+    password:    document.getElementById('newUserPass').value,
+  });
+  if (res.error) { showError('userError', res.error); return; }
+  document.getElementById('newUserName').value = '';
+  document.getElementById('newUserDisplay').value = '';
+  document.getElementById('newUserPass').value = '';
+  loadUsers();
+}
+
+async function setUserPassword(id, username) {
+  const pw = prompt('New password for ' + username + ' (min 4 chars):');
+  if (!pw) return;
+  const res = await api('/api/users/' + id + '/password', 'POST', { password: pw });
+  if (res.error) alert(res.error);
+}
+
+async function deleteUser(id, username) {
+  if (!confirm('Remove user "' + username + '"? Their config and uploads stay on disk but the account stops working.')) return;
+  await api('/api/users/' + id, 'DELETE');
+  loadUsers();
+}
+
 // ── Twitch ────────────────────────────────────────────────────────────────────
 
 async function twitchDisconnect() {
@@ -2575,8 +2670,18 @@ async function initExtended(cfg) {
   if (cfg.twitch?.needsReauth || (cfg.twitch?.missingScopes || []).length) {
     document.getElementById('reauthBanner').classList.remove('hidden');
   }
+  // Users card (admins only)
+  if (cfg.user?.isAdmin) {
+    document.getElementById('card-users').classList.remove('hidden');
+    loadUsers().catch(() => {});
+  }
+  if (cfg.user && !cfg.user.isAdmin) {
+    document.querySelector('.sb-title .sub').textContent = 'Signed in as ' + cfg.user.displayName;
+  }
+
   // Ko-fi card
-  document.getElementById('kofiWebhookUrl').textContent = window.location.origin + '/webhooks/kofi';
+  document.getElementById('kofiWebhookUrl').textContent =
+    window.location.origin + '/webhooks/kofi/' + (cfg.user ? cfg.user.id : '');
   if (cfg.kofi) {
     setKofiStatus(cfg.kofi.configured, cfg.kofi.lastEvent);
     if (cfg.kofi.configured) document.getElementById('kofiToken').value = '••••••••••';

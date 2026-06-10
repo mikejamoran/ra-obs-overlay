@@ -3,3 +3,4 @@ node_modules/
 overlay_config.json
 public/uploads/
 *.log
+users/
