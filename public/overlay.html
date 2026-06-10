@@ -1321,6 +1321,7 @@ function playAlert(alert, resume) {
     el.src = alert.image.src;
     el.style.width = (alert.image.widthPx || 300) + 'px';
     el.style.objectFit = alert.image.fit || 'contain';
+    el.onerror = () => el.remove(); // a dead URL shouldn't leave a broken-image icon
     inner.appendChild(el);
   }
 

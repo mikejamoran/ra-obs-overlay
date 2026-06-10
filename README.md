@@ -142,7 +142,9 @@ and to avoid hearing sounds twice while OBS is also open.
 When a refresh detects a **freshly unlocked achievement**, the overlay flashes
 that tile with a golden pulse (toggleable), and any **🏆 RA Achievement**
 triggers fire — so an unlock can also play a sound/image alert. Template
-variables: `{achievement}`, `{points}`, `{description}`.
+variables: `{achievement}`, `{points}`, `{description}`, `{game}`. Use
+`{badge}` as the alert's image file to show the unlocked achievement's real
+badge (new achievement triggers default to this).
 
 Overlay elements (achievement panel, widgets) animate in/out with a
 configurable style (fade, swipe, slide, pop).

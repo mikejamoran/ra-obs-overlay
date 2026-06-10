@@ -504,7 +504,8 @@ async function fetchAchievements(gameId) {
             type: 'achievement',
             user: S.twitchChannel || S.creds.username,
             achievement: a.title, points: a.points, amount: a.points,
-            description: a.description, badge: a.badge,
+            description: a.description,
+            badgeUrl: a.badge ? `https://media.retroachievements.org/Badge/${a.badge}.png` : '',
           });
         }
       }

@@ -1820,7 +1820,7 @@ const TEMPLATE_HINTS = {
   subscription:   '{user} {tier} {amount} {message} {channel}',
   raid:           '{user} {viewers} {channel}',
   follow:         '{user} {channel}',
-  achievement:    '{achievement} {points} {description} {channel}',
+  achievement:    '{achievement} {points} {description} {game} {channel}',
 };
 
 async function loadTriggers() {
@@ -1833,10 +1833,13 @@ async function loadTriggers() {
 
 async function addTrigger(type) {
   const name = TRIGGER_TYPE_NAMES[type] + ' Alert';
+  const actions = { text: { enabled: true, template: TRIGGER_DEFAULT_TEMPLATES[type] } };
+  // Achievement alerts show the unlocked badge out of the box
+  if (type === 'achievement') actions.image = { enabled: true, src: '{badge}', widthPx: 128 };
   const res = await api('/api/triggers', 'POST', {
     name,
     source: { type, command: type === 'chat_command' ? '!alert' : '' },
-    actions: { text: { enabled: true, template: TRIGGER_DEFAULT_TEMPLATES[type] } },
+    actions,
   });
   if (res.trigger) {
     triggerList.push(res.trigger);
@@ -2055,7 +2058,11 @@ function buildTriggerSettings(t) {
             <input type="text" id="img-src-${t.id}" value="${escHtml(a.image.src || '')}" placeholder="/uploads/… or /media/…"
               oninput="updateTrigger('${t.id}',{actions:{image:{src:this.value}}})"></div>
           <button class="btn btn-sm" onclick="openMediaPicker(['image','video'],src=>{document.getElementById('img-src-${t.id}').value=src;updateTrigger('${t.id}',{actions:{image:{src}}})})">Choose…</button>
+          ${s.type === 'achievement' ? `<button class="btn btn-sm" title="Show the unlocked achievement's badge"
+            onclick="document.getElementById('img-src-${t.id}').value='{badge}';updateTrigger('${t.id}',{actions:{image:{src:'{badge}'}}})">🏆 Use badge</button>` : ''}
         </div>
+        ${s.type === 'achievement' ? `<div style="font-size:11px;color:var(--muted);margin-top:6px">
+          <code>{badge}</code> = the unlocked achievement's badge image from RetroAchievements.</div>` : ''}
         <div class="field-row" style="margin-top:8px">
           <div class="field"><label>Width (px)</label>
             <input type="number" min="20" value="${a.image.widthPx || 300}"
