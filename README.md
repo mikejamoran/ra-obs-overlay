@@ -207,6 +207,18 @@ all visible so you can see exactly where each one will pop up).
   apply to the selected layout only (alert positions are shared across layouts)
 - **Backdrop dropdown** can show any image from your media library behind the
   canvas (e.g. a screenshot of your OBS scene) for accurate placement
+- **＋ Add element** creates things right on the canvas: widgets, alert
+  triggers, and the RA pieces (achievement panel / recently earned / rich
+  presence) as ordinary addable/removable elements. Adding a widget while a
+  scene is selected creates it **in that scene only** (hidden in the base
+  layout); removing an element in a scene hides it there only, while in the
+  base layout it deletes (Ctrl+Z undoes)
+- **Selected element actions** (sidebar): **▶ Preview here** renders an alert's
+  real look — image/video, text styling, animation and sound — scaled on the
+  editor canvas (or play it on the live overlay); **💾 Save preset** stores a
+  widget/trigger in your preset library so you can place fresh copies from the
+  Add menu on any layout — each copy is independent, so changes only affect
+  where you made them
 
 ---
 

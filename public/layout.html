@@ -89,12 +89,60 @@ select, input[type=number] {
 .saved-flash { color: #3fb950; font-size: 12px; opacity: 0; transition: opacity .2s; }
 .saved-flash.show { opacity: 1; }
 ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* Add-element menu */
+.abtn {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); padding: 6px 12px; font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.abtn:hover { border-color: var(--muted); }
+.abtn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.abtn.danger:hover { border-color: #f85149; color: #f85149; }
+.menu {
+  position: absolute; top: 110%; left: 0; z-index: 500; width: 250px; max-height: 70vh; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.6); padding: 6px;
+}
+.menu .mh { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; padding: 8px 10px 4px; }
+.menu .mi {
+  display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 6px;
+  font-size: 13px; cursor: pointer;
+}
+.menu .mi:hover { background: var(--panel); }
+.menu .mi .grow { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu .mi .mx { color: var(--muted); font-size: 12px; padding: 0 4px; border-radius: 4px; }
+.menu .mi .mx:hover { color: #f85149; }
+.menu .mnote { font-size: 11px; color: var(--muted); padding: 4px 10px 8px; line-height: 1.5; }
+
+/* In-editor alert preview */
+#alertPreview { position: absolute; pointer-events: auto; cursor: pointer; z-index: 20000; }
+#alertPreview .pv-inner { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+#alertPreview img, #alertPreview video { max-width: 100%; display: block; }
+#alertPreview .pv-text { border-radius: 8px; text-align: center; font-weight: 700; line-height: 1.3; overflow-wrap: break-word; }
+.anim-in-fade        { animation: pvFade    0.4s ease both; }
+.anim-in-slide-up    { animation: pvSlideUp 0.4s cubic-bezier(0.22,1,0.36,1) both; }
+.anim-in-slide-down  { animation: pvSlideDn 0.4s cubic-bezier(0.22,1,0.36,1) both; }
+.anim-in-slide-left  { animation: pvSlideL  0.4s cubic-bezier(0.22,1,0.36,1) both; }
+.anim-in-slide-right { animation: pvSlideR  0.4s cubic-bezier(0.22,1,0.36,1) both; }
+.anim-in-pop         { animation: pvPop     0.45s cubic-bezier(0.34,1.56,0.64,1) both; }
+.anim-out-fade, .anim-out-slide-up, .anim-out-slide-down, .anim-out-slide-left,
+.anim-out-slide-right, .anim-out-pop, .anim-out-none { animation: pvFade 0.4s ease reverse both; }
+@keyframes pvFade    { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pvSlideUp { from { opacity: 0; transform: translate(-50%,-50%) translateY(30px); }  to { opacity: 1; transform: translate(-50%,-50%); } }
+@keyframes pvSlideDn { from { opacity: 0; transform: translate(-50%,-50%) translateY(-30px); } to { opacity: 1; transform: translate(-50%,-50%); } }
+@keyframes pvSlideL  { from { opacity: 0; transform: translate(-50%,-50%) translateX(30px); }  to { opacity: 1; transform: translate(-50%,-50%); } }
+@keyframes pvSlideR  { from { opacity: 0; transform: translate(-50%,-50%) translateX(-30px); } to { opacity: 1; transform: translate(-50%,-50%); } }
+@keyframes pvPop     { from { opacity: 0; transform: translate(-50%,-50%) scale(0.4); }        to { opacity: 1; transform: translate(-50%,-50%) scale(1); } }
 </style>
 </head>
 <body>
 
 <div class="topbar">
   <h1>🎨 Layout Editor</h1>
+  <div style="position:relative">
+    <button class="abtn primary" id="addBtn" onclick="toggleAddMenu(event)">＋ Add element</button>
+    <div id="addMenu" class="menu" style="display:none"></div>
+  </div>
   <label>Layout
     <select id="sceneSel" onchange="setScene(this.value)"><option value="">Base layout (/obs)</option></select>
   </label>
@@ -118,6 +166,10 @@ select, input[type=number] {
     <div class="side-section">
       <div class="side-title">Show on canvas</div>
       <div class="filters" id="filters"></div>
+    </div>
+    <div class="side-section" id="selActions" style="display:none">
+      <div class="side-title" id="selTitle">Selected</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px" id="selBtns"></div>
     </div>
     <div class="side-title" style="padding:12px 14px 0">Layers — top to bottom</div>
     <div id="layers"></div>
@@ -146,7 +198,7 @@ const CATS = {
 };
 
 let cfg = { display: {}, widgets: [] };
-let triggers = [], scenes = [], mediaImages = [];
+let triggers = [], scenes = [], mediaImages = [], presets = [];
 let sceneId = '';
 let filters = new Set(Object.keys(CATS));
 let els = [];
@@ -330,6 +382,7 @@ function render() {
   }
   renderFilters();
   renderLayers();
+  updateSelActions();
 }
 
 function drawEl(el) {
@@ -364,6 +417,299 @@ function select(key) {
   selectedKey = key;
   document.querySelectorAll('.el').forEach(d => d.classList.toggle('selected', d.dataset.key === key));
   document.querySelectorAll('.layer-row').forEach(r => r.classList.toggle('selected', r.dataset.key === key));
+  updateSelActions();
+}
+
+// ── Selected-element actions ──────────────────────────────────────────────────
+
+function updateSelActions() {
+  const box = document.getElementById('selActions');
+  const el = els.find(x => x.key === selectedKey);
+  if (!el) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  document.getElementById('selTitle').textContent = `${CATS[el.cat].icon} ${el.label}`;
+  const btns = document.getElementById('selBtns');
+  btns.innerHTML = '';
+  const add = (label, fn, cls = '') => {
+    const b = document.createElement('button');
+    b.className = 'abtn ' + cls; b.textContent = label; b.onclick = fn;
+    btns.appendChild(b);
+  };
+  if (el.cat === 'alert') {
+    add('▶ Preview here', () => previewAlert(el.id));
+    add('📺 Play on overlay', () => api('/api/triggers/' + el.id + '/test', 'POST', {}));
+    add('💾 Save preset', () => savePreset(el));
+    add(sceneId ? '🗑 Delete (all layouts)' : '🗑 Delete', () => removeElement(el), 'danger');
+  } else if (el.cat === 'widget') {
+    add('💾 Save preset', () => savePreset(el));
+    add(sceneId ? '🚫 Hide in this layout' : '🗑 Delete', () => removeElement(el), 'danger');
+  } else {
+    add(sceneId ? '🚫 Hide in this layout' : '🚫 Hide', () => removeElement(el), 'danger');
+  }
+}
+
+// ── Add / remove elements ─────────────────────────────────────────────────────
+
+const WIDGET_TYPES = {
+  death_counter: '💀 Death Counter', timer: '⏱ Timer', countdown: '⏳ Countdown',
+  social: '📡 Social', scrolling_text: '📜 Scrolling Text', image: '🖼 Image / GIF', chat: '💬 Chat',
+};
+const TRIGGER_TYPES = {
+  channel_points: '🎁 Channel Points', cheer: '💎 Bits', chat_command: '❗ Chat Command',
+  subscription: '⭐ Subscription', raid: '🚀 Raid', follow: '💜 Follow',
+  achievement: '🏆 RA Achievement', kofi: '☕ Ko-fi Donation',
+};
+const TRIGGER_TEMPLATES = {
+  channel_points: '{user} redeemed {reward}!',
+  cheer:          '{user} cheered {amount} bits!',
+  chat_command:   '{user} triggered an alert!',
+  subscription:   '{user} just subscribed!',
+  raid:           '{user} is raiding with {viewers} viewers!',
+  follow:         '{user} just followed!',
+  achievement:    '🏆 Achievement unlocked: {achievement} ({points} pts)',
+  kofi:           '☕ {user} bought a coffee! ({amount} {currency}) {message}',
+};
+
+function toggleAddMenu(e) {
+  e.stopPropagation();
+  const m = document.getElementById('addMenu');
+  if (m.style.display !== 'none') { m.style.display = 'none'; return; }
+  buildAddMenu();
+  m.style.display = '';
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('#addMenu') && e.target.id !== 'addBtn')
+    document.getElementById('addMenu').style.display = 'none';
+});
+
+function mi(parent, label, fn, deletable) {
+  const d = document.createElement('div');
+  d.className = 'mi';
+  d.innerHTML = `<span class="grow">${label}</span>` + (deletable ? '<span class="mx" title="Delete preset">✕</span>' : '');
+  d.onclick = ev => {
+    if (ev.target.classList.contains('mx')) { deletable(); return; }
+    document.getElementById('addMenu').style.display = 'none';
+    fn();
+  };
+  parent.appendChild(d);
+}
+
+function buildAddMenu() {
+  const m = document.getElementById('addMenu');
+  m.innerHTML = '';
+  const d = cfg.display || {};
+
+  const h = t => { const x = document.createElement('div'); x.className = 'mh'; x.textContent = t; m.appendChild(x); };
+
+  h('RetroAchievements elements');
+  mi(m, '🏆 Achievement Panel', () => addRA('panel'));
+  mi(m, '🕑 Recently Earned',   () => addRA('recent'));
+  mi(m, '🎮 Rich Presence',     () => addRA('rp'));
+
+  h('Widgets' + (sceneId ? ' (added to this layout only)' : ''));
+  for (const [type, label] of Object.entries(WIDGET_TYPES)) mi(m, label, () => addWidgetEl(type));
+
+  h('Alert triggers (shared across layouts)');
+  for (const [type, label] of Object.entries(TRIGGER_TYPES)) mi(m, label, () => addTriggerEl(type));
+
+  if (presets.length) {
+    h('Saved presets');
+    for (const p of presets) {
+      mi(m, `${p.kind === 'trigger' ? '🔔' : '🧩'} ${p.name}`, () => placePreset(p),
+        async () => { await api('/api/presets/' + p.id, 'DELETE'); await reloadData(); buildAddMenu(); });
+    }
+  }
+}
+
+// RA elements: "adding" = making them visible in the current layout
+async function addRA(kind) {
+  if (sceneId) {
+    await api('/api/scenes/' + sceneId, 'PUT', { overrides: { [kind]: { visible: true } } });
+  } else {
+    if (kind === 'panel')  await api('/api/display', 'POST', { panelVisible: true });
+    if (kind === 'recent') await api('/api/display', 'POST', { recentEnabled: true });
+    if (kind === 'rp')     await api('/api/display', 'POST', { showRichPresence: true, rpFloating: true });
+  }
+  await reloadData();
+  select(kind);
+  flashSaved();
+}
+
+// Widgets added while a scene is selected exist only in that scene
+// (hidden in the base layout, shown + positioned via scene override)
+async function addWidgetEl(type, extra = {}) {
+  const x = Math.round(CW / 2 - 150), y = Math.round(CH / 2 - 60);
+  const res = await api('/api/widgets', 'POST', { type, x, y, visible: !sceneId, ...extra });
+  if (res.error) { alert(res.error); return; }
+  if (sceneId) {
+    await api('/api/scenes/' + sceneId, 'PUT',
+      { overrides: { widgets: { [res.widget.id]: { visible: true, x, y } } } });
+  }
+  await reloadData();
+  select('w-' + res.widget.id);
+  flashSaved();
+}
+
+async function addTriggerEl(type, payload) {
+  const body = payload || {
+    name: TRIGGER_TYPES[type].replace(/^\S+\s/, '') + ' Alert',
+    source: { type, command: type === 'chat_command' ? '!alert' : '' },
+    actions: {
+      text: { enabled: true, template: TRIGGER_TEMPLATES[type] },
+      ...(type === 'achievement' ? { image: { enabled: true, src: '{badge}', widthPx: 128 } } : {}),
+      position: { mode: 'custom', preset: 'center', x: 50, y: 45 },
+    },
+  };
+  const res = await api('/api/triggers', 'POST', body);
+  if (res.error) { alert(res.error); return; }
+  await reloadData();
+  select('t-' + res.trigger.id);
+  flashSaved();
+}
+
+async function removeElement(el) {
+  if (sceneId && el.cat !== 'alert') {
+    // hide in this layout only
+    const patch = el.cat === 'widget'
+      ? { widgets: { [el.id]: { visible: false } } }
+      : { [el.cat]: { visible: false } };
+    await api('/api/scenes/' + sceneId, 'PUT', { overrides: patch });
+  } else if (el.cat === 'widget') {
+    await api('/api/widgets/' + el.id, 'DELETE');
+  } else if (el.cat === 'alert') {
+    await api('/api/triggers/' + el.id, 'DELETE');
+  } else if (el.cat === 'panel') {
+    await api('/api/display', 'POST', { panelVisible: false });
+  } else if (el.cat === 'recent') {
+    await api('/api/display', 'POST', { recentEnabled: false });
+  } else if (el.cat === 'rp') {
+    await api('/api/display', 'POST', { showRichPresence: false });
+  }
+  selectedKey = null;
+  await reloadData();
+  const f = document.getElementById('savedFlash');
+  f.textContent = (el.cat === 'widget' || el.cat === 'alert') && !(sceneId && el.cat === 'widget')
+    ? '🗑 deleted — Ctrl+Z to undo' : '✓ saved';
+  flashSaved();
+  setTimeout(() => { f.textContent = '✓ saved'; }, 4000);
+}
+
+// ── Element presets (reuse across layouts) ────────────────────────────────────
+
+async function savePreset(el) {
+  if (el.cat === 'widget') {
+    const w = cfg.widgets.find(w => w.id === el.id);
+    if (!w) return;
+    const name = prompt('Preset name:', w.label);
+    if (!name) return;
+    await api('/api/presets', 'POST', { kind: 'widget', name,
+      payload: { type: w.type, label: w.label, w: w.w, h: w.h, config: w.config } });
+  } else if (el.cat === 'alert') {
+    const t = triggers.find(t => t.id === el.id);
+    if (!t) return;
+    const name = prompt('Preset name:', t.name);
+    if (!name) return;
+    const { id, ...payload } = t; // a placed copy must get its own id
+    await api('/api/presets', 'POST', { kind: 'trigger', name, payload });
+  }
+  await reloadData();
+  flashSaved();
+}
+
+async function placePreset(p) {
+  if (p.kind === 'widget') {
+    const { type, label, w, h, config } = p.payload;
+    await addWidgetEl(type, { label, w, h, config });
+  } else {
+    const { id, ...payload } = p.payload;
+    payload.name = p.name;
+    await addTriggerEl(payload.source?.type || 'chat_command', payload);
+  }
+}
+
+// ── In-editor alert preview ───────────────────────────────────────────────────
+
+let previewCleanup = null;
+
+async function previewAlert(triggerId) {
+  const res = await api('/api/triggers/' + triggerId + '/test', 'POST', { dry: true });
+  if (!res.alert) return;
+  renderAlertPreview(res.alert);
+}
+
+function renderAlertPreview(alert) {
+  if (previewCleanup) previewCleanup();
+  const canvas = document.getElementById('canvas');
+  const box = document.createElement('div');
+  box.id = 'alertPreview';
+  box.title = 'Click to dismiss';
+
+  // Position: percent center for custom, preset corners otherwise
+  const pos = alert.position || {};
+  let cx, cy;
+  if (pos.mode === 'custom') { cx = pos.x ?? 50; cy = pos.y ?? 20; }
+  else {
+    const sz = { w: (alert.image?.widthPx || 320), h: 120 };
+    const p = presetToPx(pos.preset || 'center', sz.w, sz.h);
+    cx = (p.x + sz.w / 2) / CW * 100; cy = (p.y + sz.h / 2) / CH * 100;
+  }
+  box.style.left = cx + '%';
+  box.style.top  = cy + '%';
+  box.style.transform = 'translate(-50%,-50%)';
+
+  const inner = document.createElement('div');
+  const animIn = (alert.animation || {}).in || 'fade';
+  inner.className = 'pv-inner' + (animIn !== 'none' ? ' anim-in-' + animIn : '');
+
+  if (alert.image && alert.image.src) {
+    const isVideo = /\.(webm|mp4)(\?|$)/i.test(alert.image.src);
+    const el = document.createElement(isVideo ? 'video' : 'img');
+    if (isVideo) {
+      el.autoplay = true; el.loop = !!alert.image.loop;
+      el.muted = !!alert.image.muted;
+      el.volume = Math.max(0, Math.min(1, alert.image.volume ?? 1));
+      el.playsInline = true;
+    }
+    el.src = alert.image.src;
+    el.style.width = Math.round((alert.image.widthPx || 300) * scale) + 'px';
+    el.onerror = () => el.remove();
+    inner.appendChild(el);
+  }
+  if (alert.text && alert.text.text) {
+    const t = document.createElement('div');
+    t.className = 'pv-text';
+    t.textContent = alert.text.text;
+    t.style.fontSize = Math.max(8, Math.round((alert.text.fontSize || 32) * scale)) + 'px';
+    t.style.padding = `${Math.round(8 * scale)}px ${Math.round(16 * scale)}px`;
+    t.style.color = alert.text.color || '#e6edf3';
+    const hex = alert.text.bgColor || '#0d0d0d';
+    const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+    t.style.background = `rgba(${r},${g},${b},${alert.text.bgOpacity ?? 0.85})`;
+    inner.appendChild(t);
+  }
+  box.appendChild(inner);
+  canvas.appendChild(box);
+
+  let audio = null;
+  if (alert.audio && alert.audio.src) {
+    audio = new Audio(alert.audio.src);
+    audio.volume = Math.max(0, Math.min(1, alert.audio.volume ?? 0.8));
+    audio.play().catch(() => {});
+  }
+
+  let dismissTimer = null;
+  const cleanup = () => {
+    clearTimeout(dismissTimer);
+    if (audio) { try { audio.pause(); } catch {} }
+    box.remove();
+    if (previewCleanup === cleanup) previewCleanup = null;
+  };
+  previewCleanup = cleanup;
+  box.onclick = cleanup;
+  dismissTimer = setTimeout(() => {
+    inner.className = 'pv-inner anim-out-' + ((alert.animation || {}).out || 'fade');
+    setTimeout(cleanup, 420);
+  }, Math.min(alert.durationMs || 6000, 15000));
 }
 
 function startDrag(e, el, div) {
@@ -483,21 +829,33 @@ function setBg(val) {
   }
 }
 
-// ── Boot ──────────────────────────────────────────────────────────────────────
+// ── Boot / data ───────────────────────────────────────────────────────────────
 
-async function load() {
-  const [c, t, s, m] = await Promise.all([
-    api('/api/config'), api('/api/triggers'), api('/api/scenes'), api('/api/media'),
+async function reloadData() {
+  const [c, t, s, pr] = await Promise.all([
+    api('/api/config'), api('/api/triggers'), api('/api/scenes'), api('/api/presets'),
   ]);
-  cfg = c; triggers = t.triggers || []; scenes = s.scenes || [];
-  mediaImages = (m.media || []).filter(x => x.kind === 'image');
+  cfg = c; triggers = t.triggers || []; scenes = s.scenes || []; presets = pr.presets || [];
+  rebuildSceneSelect();
+  render();
+}
 
+function rebuildSceneSelect() {
   const sel = document.getElementById('sceneSel');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">Base layout (/obs)</option>';
   for (const sc of scenes) {
     const o = document.createElement('option');
     o.value = sc.id; o.textContent = sc.name;
     sel.appendChild(o);
   }
+  if ([...sel.options].some(x => x.value === cur)) sel.value = cur;
+  else { sel.value = ''; sceneId = ''; }
+}
+
+async function load() {
+  const m = await api('/api/media');
+  mediaImages = (m.media || []).filter(x => x.kind === 'image');
   const bg = document.getElementById('bgSel');
   for (const img of mediaImages) {
     const o = document.createElement('option');
@@ -508,8 +866,18 @@ async function load() {
   try { savedBg = localStorage.getItem('layoutBg') || 'grid'; } catch {}
   if ([...bg.options].some(o => o.value === savedBg)) { bg.value = savedBg; setBg(savedBg); }
 
-  render();
+  await reloadData();
 }
+
+// Ctrl/Cmd+Z undoes the most recent delete (server-side undo stack)
+document.addEventListener('keydown', async e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z'
+      && !['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) {
+    e.preventDefault();
+    const res = await api('/api/undo', 'POST');
+    if (res.ok) { await reloadData(); flashSaved(); }
+  }
+});
 
 document.getElementById('backLink').href = BASE + '/';
 window.addEventListener('resize', render);

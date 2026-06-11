@@ -61,6 +61,7 @@ function defaultState() {
     triggers: [],
     mediaFolders: [],
     scenes: [],
+    elementPresets: [],   // saved widgets/triggers for reuse across layouts
     twitchConnected:  false,
     twitchChannel:    '',
     twitchAccessToken:  null,
@@ -136,6 +137,7 @@ function loadConfig(u) {
       if (saved.triggers)      S.triggers = saved.triggers.map(t => triggersLib.normalizeTrigger(t));
       if (saved.mediaFolders)  S.mediaFolders = saved.mediaFolders;
       if (saved.scenes)        S.scenes = saved.scenes;
+      if (saved.elementPresets) S.elementPresets = saved.elementPresets;
       if (saved.twitchChannel)      S.twitchChannel      = saved.twitchChannel;
       if (saved.twitchAccessToken)  S.twitchAccessToken  = saved.twitchAccessToken;
       if (saved.twitchRefreshToken) S.twitchRefreshToken = saved.twitchRefreshToken;
@@ -158,7 +160,7 @@ function saveConfig(u) {
     fs.writeFileSync(u.configFile, JSON.stringify({
       creds: S.creds, display: S.display, gameId: S.gameId,
       widgets: S.widgets, triggers: S.triggers, mediaFolders: S.mediaFolders,
-      scenes: S.scenes,
+      scenes: S.scenes, elementPresets: S.elementPresets,
       twitchChannel: S.twitchChannel,
       twitchAccessToken: S.twitchAccessToken, twitchRefreshToken: S.twitchRefreshToken,
       twitchUserId: S.twitchUserId, twitchScopes: S.twitchScopes,
@@ -1093,16 +1095,16 @@ ur.get('/api/widgets', userAuth, (req, res) => {
 
 ur.post('/api/widgets', userAuth, (req, res) => {
   const u = req.u, S = u.S;
-  const { type, label, x = 100, y = 100, config = {} } = req.body || {};
+  const { type, label, x = 100, y = 100, config = {}, w, h, visible } = req.body || {};
   if (!type || !WIDGET_SIZES[type]) return res.status(400).json({ error: 'invalid type' });
-  const { w, h } = WIDGET_SIZES[type];
+  const size = WIDGET_SIZES[type];
   const maxZ = S.widgets.reduce((m, ww) => Math.max(m, ww.zIndex || 0), 0);
   const widget = {
     id: crypto.randomUUID(),
     type, label: label || type.replace(/_/g, ' '),
-    x, y, w, h,
+    x, y, w: parseInt(w) || size.w, h: parseInt(h) || size.h,
     zIndex: maxZ + 1,
-    visible: true, locked: false,
+    visible: visible !== false, locked: false,
     config: { ...widgetDefaults(type), ...config },
   };
   S.widgets.push(widget);
@@ -1253,6 +1255,7 @@ ur.get('/api/backup', userAuth, (req, res) => {
     triggers: S.triggers,
     mediaFolders: S.mediaFolders,
     scenes: S.scenes,
+    elementPresets: S.elementPresets,
   });
 });
 
@@ -1266,6 +1269,7 @@ ur.post('/api/backup/import', userAuth, (req, res) => {
     if (Array.isArray(b.triggers))     S.triggers     = b.triggers.map(t => triggersLib.normalizeTrigger(t));
     if (Array.isArray(b.mediaFolders)) S.mediaFolders = b.mediaFolders.filter(f => f && f.id && f.path);
     if (Array.isArray(b.scenes))       S.scenes       = b.scenes.filter(s => s && s.id && s.name);
+    if (Array.isArray(b.elementPresets)) S.elementPresets = b.elementPresets.filter(x => x && x.id && x.kind);
     if (b.gameId) { S.gameId = parseInt(b.gameId) || S.gameId; S.lastAchRefresh = 0; }
     saveConfig(u);
     u.eventsub.refresh();
@@ -1347,7 +1351,40 @@ ur.delete('/api/triggers/:id', userAuth, (req, res) => {
 ur.post('/api/triggers/:id/test', userAuth, (req, res) => {
   const t = req.u.S.triggers.find(t => t.id === req.params.id);
   if (!t) return res.status(404).json({ error: 'not found' });
+  // dry run: hand back the rendered alert payload (for in-editor previews)
+  // without putting it through the live queue
+  if ((req.body || {}).dry) return res.json({ ok: true, alert: req.u.triggers.buildTestAlert(t) });
   req.u.triggers.fireTest(t);
+  res.json({ ok: true });
+});
+
+// ── Element presets (saved widgets/triggers for reuse) ──────────────────────────
+
+ur.get('/api/presets', userAuth, (req, res) => res.json({ presets: req.u.S.elementPresets }));
+
+ur.post('/api/presets', userAuth, (req, res) => {
+  const u = req.u;
+  const { kind, name, payload } = req.body || {};
+  if (!['widget', 'trigger'].includes(kind) || !payload)
+    return res.status(400).json({ error: 'kind (widget|trigger) and payload required' });
+  const preset = {
+    id: crypto.randomUUID(),
+    kind,
+    name: (name || '').trim() || 'Preset ' + (u.S.elementPresets.length + 1),
+    payload,
+    createdAt: Date.now(),
+  };
+  u.S.elementPresets.push(preset);
+  saveConfig(u);
+  res.json({ ok: true, preset });
+});
+
+ur.delete('/api/presets/:id', userAuth, (req, res) => {
+  const u = req.u;
+  const idx = u.S.elementPresets.findIndex(p => p.id === req.params.id);
+  if (idx < 0) return res.status(404).json({ error: 'not found' });
+  u.S.elementPresets.splice(idx, 1);
+  saveConfig(u);
   res.json({ ok: true });
 });
 
